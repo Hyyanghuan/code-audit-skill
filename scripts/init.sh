@@ -22,6 +22,18 @@ WORK_DIR="$(resolve_work_dir)"
 ABS_WORK_DIR="${GITHUB_WORKSPACE}/${WORK_DIR}"
 setup_audit_dirs
 
+# Telegram 配置校验（在写入 env 之前）
+TELEGRAM_CONFIGURED="true"
+if [[ "$ENABLE_TELEGRAM" == "true" ]]; then
+  if [[ -z "${INPUT_TELEGRAM_BOT_TOKEN:-}" || -z "${INPUT_TELEGRAM_CHAT_ID:-}" ]]; then
+    TELEGRAM_CONFIGURED="false"
+    log_warn "Telegram 已启用但 token/chat_id 为空，通知步骤将尝试执行并记录失败原因"
+    echo "::warning title=Telegram 未配置::请在仓库 Settings → Secrets → Actions 添加 TG_BOT_TOKEN 和 TG_CHAT_ID"
+  else
+    log_info "Telegram 配置就绪 (chat_id=${INPUT_TELEGRAM_CHAT_ID})"
+  fi
+fi
+
 # 持久化环境供后续步骤
 ENV_FILE="$AUDIT_DIR/env.sh"
 cat > "$ENV_FILE" <<EOF
@@ -46,6 +58,7 @@ export INPUT_SUPER_LINTER_LANGUAGES='${INPUT_SUPER_LINTER_LANGUAGES:-}'
 export INPUT_TELEGRAM_BOT_TOKEN='${INPUT_TELEGRAM_BOT_TOKEN:-}'
 export INPUT_TELEGRAM_CHAT_ID='${INPUT_TELEGRAM_CHAT_ID:-}'
 export INPUT_TELEGRAM_BOT_USERNAME='${INPUT_TELEGRAM_BOT_USERNAME:-}'
+export TELEGRAM_CONFIGURED='${TELEGRAM_CONFIGURED}'
 EOF
 
 # 写入元信息
@@ -63,16 +76,6 @@ cat > "$ARTIFACTS_DIR/audit-meta.json" <<EOF
 }
 EOF
 
-# Telegram 配置校验（不阻断）
-if [[ "$ENABLE_TELEGRAM" == "true" ]]; then
-  if [[ -z "${INPUT_TELEGRAM_BOT_TOKEN:-}" || -z "${INPUT_TELEGRAM_CHAT_ID:-}" ]]; then
-    log_warn "Telegram 已启用但 token/chat_id 为空，通知步骤将跳过"
-    ENABLE_TELEGRAM="false"
-    sed -i "s/ENABLE_TELEGRAM='true'/ENABLE_TELEGRAM='false'/" "$ENV_FILE" 2>/dev/null || \
-      sed -i '' "s/ENABLE_TELEGRAM='true'/ENABLE_TELEGRAM='false'/" "$ENV_FILE" 2>/dev/null || true
-  fi
-fi
-
 # 输出到 GITHUB_OUTPUT
 gha_output "audit_dir" "$AUDIT_DIR"
 gha_output "enable_gitleaks" "$ENABLE_GITLEAKS"
@@ -82,6 +85,7 @@ gha_output "enable_dependency" "$ENABLE_DEPENDENCY"
 gha_output "enable_custom_rules" "$ENABLE_CUSTOM"
 gha_output "enable_test_cases" "$ENABLE_TEST_CASES"
 gha_output "enable_telegram" "$ENABLE_TELEGRAM"
+gha_output "telegram_configured" "$TELEGRAM_CONFIGURED"
 gha_output "fail_on_findings" "$FAIL_ON_FINDINGS"
 gha_output "upload_artifacts" "$UPLOAD_ARTIFACTS"
 gha_output "work_dir" "$WORK_DIR"

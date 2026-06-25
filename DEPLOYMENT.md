@@ -602,10 +602,34 @@ uses: YOUR_USERNAME/code-audit-skill@v1.1.0
 
 ### Q3：Telegram 收不到消息
 
-1. 检查 Secrets 名称是否为 `TG_BOT_TOKEN` / `TG_CHAT_ID`（区分大小写）
-2. 检查 workflow 中 `enable-telegram: 'true'`
-3. 确认 Bot 已加入群组且有发言权限
-4. 下载制品查看 `telegram.log`
+**按顺序排查：**
+
+1. **Actions 日志里是否有「推送 Telegram 通知」步骤？**
+   - 若没有 → workflow 未设置 `enable-telegram: 'true'`（Action 默认为 `false`）
+   - 若步骤被跳过 → 检查 init 日志中 `tg=true` 是否为 true
+
+2. **初始化日志是否出现警告？**
+   ```
+   Telegram 已启用但 token/chat_id 为空
+   ```
+   → 去 **Settings → Secrets → Actions** 添加 `TG_BOT_TOKEN`、`TG_CHAT_ID`（名称必须完全一致）
+
+3. **「推送 Telegram 通知」步骤日志**
+   - 查看 `TG 诊断: token已设置=... chat_id已设置=...`
+   - `token已设置=false` → Secret 未配置或未传入 workflow
+
+4. **下载制品 `code-audit-logs-{run_id}`**
+   - `telegram.log` — curl 响应与 http_code
+   - `telegram-diagnostic.json` — 结构化诊断
+
+5. **常见 API 错误**
+   | error_code | 原因 | 处理 |
+   |------------|------|------|
+   | 401 | Token 无效 | @BotFather `/revoke` 重新生成，更新 Secret |
+   | 400 | Chat ID 错误 | 用 getUpdates 确认群组 ID（负数） |
+   | 403 | Bot 无权限 | 将 Bot 拉入群并赋予发言权限 |
+
+6. **Fork PR** — 来自 fork 的 PR 无法读取 Secrets，TG 不会发送
 
 ### Q4：空项目或纯 JS 项目报 bandit 错误
 
