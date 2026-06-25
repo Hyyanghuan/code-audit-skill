@@ -7,7 +7,9 @@ load_audit_env || true
 
 log_info "========== 汇总审计结果 =========="
 
-MODULES=(gitleaks super_linter bandit dependency_scan custom_rules)
+MODULES=(gitleaks super_linter bandit dependency_scan custom_rules \
+  sast_patterns taint_analysis control_flow config_audit specialized_security \
+  diff_audit coverage_audit runtime_audit manual_checklist)
 TOTAL_FINDINGS=0
 FAILED_MODULES=()
 SKIPPED_MODULES=()
@@ -48,7 +50,9 @@ import json, glob, os
 
 results_dir = "${RESULTS_DIR}"
 artifacts_dir = "${ARTIFACTS_DIR}"
-modules = ["gitleaks", "super_linter", "bandit", "dependency_scan", "custom_rules"]
+modules = ["gitleaks", "super_linter", "bandit", "dependency_scan", "custom_rules",
+           "sast_patterns", "taint_analysis", "control_flow", "config_audit",
+           "specialized_security", "diff_audit", "coverage_audit", "runtime_audit", "manual_checklist"]
 
 summary = {
     "audit_status": "${AUDIT_STATUS}",

@@ -1,5 +1,5 @@
 # 业务仓库最小接入示例
-# 复制到 .github/workflows/code-audit.yml 并按注释配置 secrets
+# 复制到 .github/workflows/code-audit.yml
 
 name: Code Audit
 
@@ -28,18 +28,9 @@ jobs:
           fetch-depth: 0
 
       - name: 运行代码审计 Skill
-        uses: YOUR_ORG/code-audit-skill@v1   # 替换为实际仓库路径
+        uses: YOUR_USERNAME/code-audit-skill@main   # 引用主干最新版
         with:
           working-directory: ${{ github.event.inputs.working-directory || '.' }}
           fail-on-findings: 'true'
-          # 模块开关（可按需关闭）
-          enable-gitleaks: 'true'
-          enable-super-linter: 'true'
-          enable-bandit: 'true'
-          enable-dependency-scan: 'true'
-          enable-custom-rules: 'true'
-          # Telegram 通知
           enable-telegram: 'true'
-          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
-          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
-          telegram-bot-username: '@your_bot'
+          # TG 配置写死在 Skill 仓库 config/telegram.yaml，无需 Secrets

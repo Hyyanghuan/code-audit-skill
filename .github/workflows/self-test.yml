@@ -24,10 +24,6 @@ on:
 permissions:
   contents: read
 
-env:
-  TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-  TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-
 jobs:
   # ── 场景 1：正常项目（应通过或仅有 low 级别提示）──
   scenario-normal:
@@ -41,9 +37,6 @@ jobs:
           working-directory: test-fixtures/normal-project
           fail-on-findings: 'false'
           enable-telegram: 'true'
-          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
-          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
-          telegram-bot-username: '@test_skills_yh_bot'
 
   # ── 场景 2：空项目（全部跳过，不失败）──
   scenario-empty:
@@ -70,9 +63,6 @@ jobs:
           working-directory: test-fixtures/multi-language
           fail-on-findings: 'false'
           enable-telegram: 'true'
-          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
-          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
-          telegram-bot-username: '@test_skills_yh_bot'
 
   # ── 场景 4：无 Python（bandit 自动跳过）──
   scenario-no-python:
@@ -104,9 +94,6 @@ jobs:
           enable-super-linter: 'false'
           enable-dependency-scan: 'false'
           enable-telegram: 'true'
-          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
-          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
-          telegram-bot-username: '@test_skills_yh_bot'
       - name: 验证违规场景确实失败
         run: |
           if [[ "${{ steps.audit.outputs.audit-status }}" != "failure" ]]; then
@@ -162,6 +149,3 @@ jobs:
           working-directory: '.'
           fail-on-findings: 'false'
           enable-telegram: 'true'
-          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
-          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
-          telegram-bot-username: '@test_skills_yh_bot'

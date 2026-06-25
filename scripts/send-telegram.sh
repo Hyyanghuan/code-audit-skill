@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 load_audit_env || true
 
-# 回退 artifacts 目录（init 失败时）
 if [[ -z "${ARTIFACTS_DIR:-}" ]]; then
   ARTIFACTS_DIR="${RUNNER_TEMP:-/tmp}/code-audit-${GITHUB_RUN_ID:-}/artifacts"
   mkdir -p "$ARTIFACTS_DIR"
@@ -14,279 +13,270 @@ fi
 LOG_FILE="${ARTIFACTS_DIR}/telegram.log"
 DIAG_FILE="${ARTIFACTS_DIR}/telegram-diagnostic.json"
 
-log_info "========== Telegram 汇总通知（审计 + 测试用例）=========="
+log_info "========== Telegram 汇总通知（审计 + 测试用例 MD + 运行日志）=========="
 
-TOKEN="${INPUT_TELEGRAM_BOT_TOKEN:-}"
-CHAT_ID="${INPUT_TELEGRAM_CHAT_ID:-}"
-BOT_USER="${INPUT_TELEGRAM_BOT_USERNAME:-}"
+# 加载硬编码配置 config/telegram.yaml（workflow input 可覆盖）
+# shellcheck source=load-telegram-config.sh
+source "${SCRIPT_DIR}/load-telegram-config.sh"
 
-# --- 诊断信息 ---
-TOKEN_SET="false"
-TOKEN_LEN=0
-[[ -n "$TOKEN" ]] && TOKEN_SET="true" && TOKEN_LEN=${#TOKEN}
-CHAT_ID_SET="false"
-[[ -n "$CHAT_ID" ]] && CHAT_ID_SET="true"
+TOKEN="${INPUT_TELEGRAM_BOT_TOKEN:-${TG_BOT_TOKEN:-}}"
+CHAT_ID="${INPUT_TELEGRAM_CHAT_ID:-${TG_CHAT_ID:-}}"
+BOT_USER="${INPUT_TELEGRAM_BOT_USERNAME:-${TG_BOT_USERNAME:-}}"
+SEND_SUMMARY="${TG_SEND_SUMMARY:-true}"
+SEND_MD="${TG_SEND_TEST_CASES_MD:-true}"
+SEND_BUG="${TG_SEND_BUG_REPORT:-true}"
+SEND_LOGS="${TG_SEND_AUDIT_LOGS:-true}"
 
-log_info "TG 诊断: token已设置=${TOKEN_SET} (长度=${TOKEN_LEN}) chat_id已设置=${CHAT_ID_SET} chat_id=${CHAT_ID:-空}"
-log_info "TG 诊断: enable_telegram=${ENABLE_TELEGRAM:-unknown} artifacts_dir=${ARTIFACTS_DIR}"
+log_info "TG 配置来源: ${TG_CONFIG_SOURCE:-unknown}"
+log_info "TG chat_id=${CHAT_ID:-空} bot=${BOT_USER:-未设置} send_md=${SEND_MD} send_bug=${SEND_BUG} send_logs=${SEND_LOGS}"
+
+# 生成 Bug 报告（若前置步骤未执行）
+BUG_MD="${ARTIFACTS_DIR}/audit-bugs.md"
+if [[ ! -f "$BUG_MD" ]]; then
+  bash "${SCRIPT_DIR}/generate-bug-report.sh" 2>/dev/null || true
+fi
 
 write_diag() {
-  local status="$1"
-  local detail="$2"
-  local http="${3:-}"
-  cat > "$DIAG_FILE" <<EOF
-{
-  "status": "${status}",
-  "detail": "${detail}",
-  "http_code": "${http}",
-  "token_configured": ${TOKEN_SET},
-  "token_length": ${TOKEN_LEN},
-  "chat_id_configured": ${CHAT_ID_SET},
-  "chat_id": "${CHAT_ID:-}",
-  "artifacts_dir": "${ARTIFACTS_DIR}",
-  "summary_file_exists": $( [[ -f "${ARTIFACTS_DIR}/audit-summary.json" ]] && echo true || echo false ),
-  "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  local status="$1" detail="$2" http="${3:-}"
+  python3 -c "
+import json, os
+from datetime import datetime, timezone
+d = {
+  'status': '${status}',
+  'detail': '''${detail}''',
+  'http_code': '${http}',
+  'chat_id': '${CHAT_ID:-}',
+  'config_source': '${TG_CONFIG_SOURCE:-}',
+  'timestamp': datetime.now(timezone.utc).isoformat()
 }
-EOF
+with open('${DIAG_FILE}', 'w') as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+"
 }
 
 if [[ -z "$TOKEN" || -z "$CHAT_ID" ]]; then
-  MSG="Telegram token 或 chat_id 为空，无法发送"
+  MSG="Telegram token/chat_id 为空，请检查 config/telegram.yaml"
   log_warn "$MSG"
-  echo "::warning title=Telegram 发送跳过::${MSG}。请检查 GitHub Secrets: TG_BOT_TOKEN、TG_CHAT_ID"
+  echo "::warning title=Telegram 未配置::${MSG}"
   write_diag "skipped" "$MSG"
   exit 0
 fi
 
+# 合并运行日志
+COMBINED_LOG="${ARTIFACTS_DIR}/audit-logs-combined.txt"
+if [[ "${SEND_LOGS}" == "true" ]]; then
+  COMBINED_LOG=$(bash "${SCRIPT_DIR}/bundle-audit-logs.sh" 2>/dev/null | tail -1 || echo "${ARTIFACTS_DIR}/audit-logs-combined.txt")
+fi
+
 SUMMARY_FILE="${ARTIFACTS_DIR}/audit-summary.json"
+TEST_MD="${ARTIFACTS_DIR}/test-cases.md"
 TEST_CASES_FILE="${ARTIFACTS_DIR}/test-cases.json"
 
-# 读取审计汇总
+# 读取审计状态
+AUDIT_STATUS="unknown"
+TOTAL_FINDINGS=0
+RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+REPO="${GITHUB_REPOSITORY:-unknown}"
+REF="${GITHUB_REF:-}"
+SHA_SHORT="${GITHUB_SHA:-}"
+SHA_SHORT="${SHA_SHORT:0:8}"
+
 if [[ -f "$SUMMARY_FILE" ]]; then
-  read -r AUDIT_STATUS TOTAL_FINDINGS RUN_URL REPO REF SHA <<< "$(python3 -c "
+  read -r AUDIT_STATUS TOTAL_FINDINGS RUN_URL <<< "$(python3 -c "
 import json
 with open('${SUMMARY_FILE}') as f:
     s = json.load(f)
-print(s.get('audit_status','unknown'), s.get('total_findings',0), s.get('run_url',''), '${GITHUB_REPOSITORY:-}', '${GITHUB_REF:-}', '${GITHUB_SHA:-}'[:8])
-" 2>/dev/null || echo "unknown 0 '' '' '' ''")"
-else
-  AUDIT_STATUS="unknown"
-  TOTAL_FINDINGS=0
-  RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-  REPO="${GITHUB_REPOSITORY:-unknown}"
-  REF="${GITHUB_REF:-}"
-  SHA="${GITHUB_SHA:-}"
-  SHA="${SHA:0:8}"
-  log_warn "audit-summary.json 不存在，使用默认概览"
+print(s.get('audit_status','unknown'), s.get('total_findings',0), s.get('run_url','${RUN_URL}'))
+" 2>/dev/null || echo "unknown 0 ${RUN_URL}")"
 fi
 
-# 构建模块详情（纯文本，避免 HTML 解析失败）
-MODULE_DETAIL=""
-if [[ -f "$SUMMARY_FILE" ]]; then
-  MODULE_DETAIL=$(python3 -c "
-import json
-with open('${SUMMARY_FILE}') as f:
-    s = json.load(f)
-icons = {'success':'[OK]','failure':'[FAIL]','skipped':'[SKIP]','error':'[WARN]'}
-lines = []
-for mod, data in s.get('modules', {}).items():
-    st = data.get('status','unknown')
-    icon = icons.get(st, '[?]')
-    findings = data.get('findings', 0)
-    msg = data.get('message', '')
-    lines.append(f'{icon} {mod}: {st} ({findings}) - {msg}')
-print(chr(10).join(lines) if lines else '无模块详情')
-" 2>/dev/null || echo "无法解析模块详情")
-fi
-
-# 构建测试用例详情
-TEST_CASE_DETAIL=""
-TEST_PASS_RATE="N/A"
-ALL_TESTS_PASSED="unknown"
+# 测试用例统计
+TC_STATS="N/A"
 if [[ -f "$TEST_CASES_FILE" ]]; then
-  TEST_CASE_DETAIL=$(python3 -c "
-import json
-with open('${TEST_CASES_FILE}') as f:
-    d = json.load(f)
-if not d.get('executed'):
-    print('测试用例尚未执行')
-    raise SystemExit(0)
-stats = d.get('execution_stats', {})
-lines = [f\"总计: {stats.get('total',0)} | 通过: {stats.get('passed',0)} | 失败: {stats.get('failed',0)}\"]
-for c in d.get('test_cases', []):
-    icon = '[OK]' if c.get('passed') is True else ('[FAIL]' if c.get('passed') is False else '[?]')
-    passed = '是' if c.get('passed') is True else ('否' if c.get('passed') is False else '待执行')
-    lines.append(f\"{icon} {c['tc_id']} {c['test_function']}: {passed}\")
-    lines.append(f\"   结果: {c.get('test_result','')[:120]}\")
-print(chr(10).join(lines))
-" 2>/dev/null || echo "无法解析测试用例")
-  TEST_STATS=$(python3 -c "
+  TC_STATS=$(python3 -c "
 import json
 with open('${TEST_CASES_FILE}') as f:
     d = json.load(f)
 if d.get('executed'):
     s = d.get('execution_stats', {})
-    print(f\"{s.get('passed',0)}/{s.get('total',0)}\")
-    print('true' if s.get('failed',1)==0 else 'false')
+    print(f\"{s.get('passed',0)}/{s.get('total',0)} 通过\")
 else:
-    print('N/A')
-    print('unknown')
-" 2>/dev/null)
-  TEST_PASS_RATE=$(echo "$TEST_STATS" | head -1)
-  ALL_TESTS_PASSED=$(echo "$TEST_STATS" | tail -1)
-elif [[ -f "$SUMMARY_FILE" ]]; then
-  TEST_CASE_DETAIL=$(python3 -c "
-import json
-with open('${SUMMARY_FILE}') as f:
-    tc = json.load(f).get('test_cases', {})
-if not tc:
-    print('未启用测试用例')
-else:
-    lines = [f\"总计: {tc.get('total',0)} | 通过: {tc.get('passed',0)} | 失败: {tc.get('failed',0)}\"]
-    for c in tc.get('cases', []):
-        icon = '[OK]' if c.get('passed') is True else ('[FAIL]' if c.get('passed') is False else '[?]')
-        lines.append(f\"{icon} {c['tc_id']} {c['test_function']}: {c.get('passed_label','')}\")
-    print(chr(10).join(lines))
-" 2>/dev/null || echo "无测试用例数据")
-  TEST_PASS_RATE=$(python3 -c "
-import json
-with open('${SUMMARY_FILE}') as f:
-    tc = json.load(f).get('test_cases', {})
-print(tc.get('pass_rate','N/A') if tc else 'N/A')
+    print(f\"{d.get('total_count',0)} 条待执行\")
 " 2>/dev/null || echo "N/A")
 fi
 
-OVERALL_STATUS="$AUDIT_STATUS"
-if [[ "$ALL_TESTS_PASSED" == "false" ]]; then
-  OVERALL_STATUS="failure"
-elif [[ "$AUDIT_STATUS" == "success" && "$ALL_TESTS_PASSED" == "true" ]]; then
-  OVERALL_STATUS="success"
+# Bug 统计（摘要消息前读取）
+BUG_COUNT=0
+BUG_HIGH=0
+if [[ -f "${ARTIFACTS_DIR}/audit-bugs.json" ]]; then
+  read -r BUG_COUNT BUG_HIGH <<< "$(python3 -c "
+import json
+with open('${ARTIFACTS_DIR}/audit-bugs.json') as f:
+    m = json.load(f).get('meta', {})
+print(m.get('total_bugs', 0), m.get('high_count', 0))
+" 2>/dev/null || echo "0 0")"
 fi
 
-if [[ "$OVERALL_STATUS" == "success" ]]; then
-  HEADER="[PASS] 代码审计与验收测试全部通过"
-elif [[ "$AUDIT_STATUS" == "failure" ]]; then
-  HEADER="[FAIL] 代码审计未通过"
-elif [[ "$ALL_TESTS_PASSED" == "false" ]]; then
-  HEADER="[WARN] 审计完成但验收测试未全部通过"
-elif [[ "$AUDIT_STATUS" == "skipped" ]]; then
-  HEADER="[SKIP] 代码审计已跳过（无可扫描内容）"
-else
-  HEADER="[?] 代码审计状态未知"
-fi
-
-EVENT_NAME="${GITHUB_EVENT_NAME:-manual}"
-ACTOR="${GITHUB_ACTOR:-unknown}"
-SHA_SHORT="${GITHUB_SHA:-unknown}"
-SHA_SHORT="${SHA_SHORT:0:8}"
-
-# 纯文本消息（避免 HTML parse_mode 导致 400）
-MESSAGE=$(cat <<EOF
-${HEADER}
-
-━━━ 审计概览 ━━━
-仓库: ${REPO}
-分支/Ref: ${REF}
-Commit: ${SHA_SHORT}
-触发: ${EVENT_NAME} by ${ACTOR}
-审计状态: ${AUDIT_STATUS}
-问题总数: ${TOTAL_FINDINGS}
-
-扫描模块:
-${MODULE_DETAIL}
-
-━━━ 验收测试用例 ━━━
-通过率: ${TEST_PASS_RATE}
-${TEST_CASE_DETAIL}
-
-运行链接: ${RUN_URL}
-$( [[ -n "$BOT_USER" ]] && echo "Bot: ${BOT_USER}" )
-EOF
-)
-
-# Telegram 消息长度限制 4096
-MSG_LEN=${#MESSAGE}
-if [[ "$MSG_LEN" -gt 4000 ]]; then
-  log_warn "消息过长 (${MSG_LEN} 字符)，截断至 4000"
-  MESSAGE="${MESSAGE:0:3990}"$'\n...(已截断)'
-fi
-
-send_telegram() {
-  local parse_mode="${1:-}"
-  local extra_args=()
-  [[ -n "$parse_mode" ]] && extra_args+=(-d "parse_mode=${parse_mode}")
-
+send_document() {
+  local file="$1"
+  local caption="$2"
+  [[ -f "$file" ]] || { log_warn "文件不存在，跳过发送: $file"; return 1; }
+  local size
+  size=$(wc -c < "$file" 2>/dev/null || echo 0)
+  log_info "发送文档: $(basename "$file") (${size} bytes)"
   curl -sS -w "\n%{http_code}" \
-    --max-time 30 \
-    --connect-timeout 10 \
-    -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-    -d "chat_id=${CHAT_ID}" \
-    -d "disable_web_page_preview=true" \
-    "${extra_args[@]}" \
-    --data-urlencode "text=${MESSAGE}" \
+    --max-time 120 \
+    -X POST "https://api.telegram.org/bot${TOKEN}/sendDocument" \
+    -F "chat_id=${CHAT_ID}" \
+    -F "document=@${file}" \
+    -F "caption=${caption}" \
     2>&1
 }
 
-set +e
-# 优先纯文本（无 parse_mode），兼容性最好
-RESPONSE=$(send_telegram "")
-CURL_EXIT=$?
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
+send_message() {
+  local text="$1"
+  curl -sS -w "\n%{http_code}" \
+    --max-time 30 \
+    -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+    -d "chat_id=${CHAT_ID}" \
+    -d "disable_web_page_preview=true" \
+    --data-urlencode "text=${text}" \
+    2>&1
+}
 
-# 失败时尝试 HTML 模式（部分旧逻辑兼容）
-if [[ "$CURL_EXIT" -ne 0 || "$HTTP_CODE" != "200" ]]; then
-  log_warn "纯文本发送失败 (http=${HTTP_CODE})，响应: ${BODY}"
-  RESPONSE=$(send_telegram "HTML")
-  CURL_EXIT=$?
-  HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-  BODY=$(echo "$RESPONSE" | sed '$d')
+parse_response() {
+  local resp="$1"
+  HTTP_CODE=$(echo "$resp" | tail -1)
+  BODY=$(echo "$resp" | sed '$d')
+}
+
+SENT_ITEMS=()
+FAIL_ITEMS=()
+
+# ── 1. 发送文字摘要 ──
+if [[ "${SEND_SUMMARY}" == "true" ]]; then
+  MSG=$(cat <<EOF
+[Code Audit] ${AUDIT_STATUS^^}
+
+仓库: ${REPO}
+分支: ${REF}
+Commit: ${SHA_SHORT}
+审计状态: ${AUDIT_STATUS}
+问题数: ${TOTAL_FINDINGS}
+Bug数: ${BUG_COUNT:-0}
+测试用例: ${TC_STATS}
+运行: ${RUN_URL}
+Bot: ${BOT_USER}
+EOF
+)
+  RESP=$(send_message "$MSG")
+  parse_response "$RESP"
+  if [[ "$HTTP_CODE" == "200" ]]; then
+    SENT_ITEMS+=("摘要消息")
+    log_info "摘要消息发送成功"
+  else
+    FAIL_ITEMS+=("摘要消息:${HTTP_CODE}")
+    log_warn "摘要消息失败: ${BODY}"
+  fi
 fi
-set -e
 
+# ── 2b. 发送 Bug 报告 MD（存在错误时）──
+if [[ "${SEND_BUG}" == "true" && -f "$BUG_MD" && "${BUG_COUNT:-0}" -gt 0 ]]; then
+  # Bug 告警短消息
+  ALERT_MSG="[BUG ALERT] 发现 ${BUG_COUNT} 个错误 (高危 ${BUG_HIGH})
+仓库: ${REPO}
+分支: ${REF}
+详情见 audit-bugs.md 附件
+运行: ${RUN_URL}"
+  RESP=$(send_message "$ALERT_MSG")
+  parse_response "$RESP"
+  if [[ "$HTTP_CODE" == "200" ]]; then
+    SENT_ITEMS+=("Bug告警")
+  fi
+
+  CAPTION="Bug报告 ${BUG_COUNT}个 | 高危${BUG_HIGH} | ${REPO} | Run#${GITHUB_RUN_ID:-0}"
+  RESP=$(send_document "$BUG_MD" "$CAPTION")
+  parse_response "$RESP"
+  if [[ "$HTTP_CODE" == "200" ]]; then
+    SENT_ITEMS+=("audit-bugs.md")
+    log_info "audit-bugs.md 发送成功 (${BUG_COUNT} bugs)"
+  else
+    FAIL_ITEMS+=("audit-bugs.md:${HTTP_CODE}")
+    log_warn "audit-bugs.md 发送失败: ${BODY}"
+  fi
+elif [[ "${BUG_COUNT:-0}" -eq 0 ]]; then
+  log_info "未发现 Bug，跳过 audit-bugs.md 发送"
+fi
+
+# ── 3. 发送测试用例 MD 文档 ──
+if [[ "${SEND_MD}" == "true" && -f "$TEST_MD" ]]; then
+  CAPTION="测试用例报告 ${REPO} | ${TC_STATS} | Run#${GITHUB_RUN_ID:-0}"
+  RESP=$(send_document "$TEST_MD" "$CAPTION")
+  parse_response "$RESP"
+  if [[ "$HTTP_CODE" == "200" ]]; then
+    SENT_ITEMS+=("test-cases.md")
+    log_info "test-cases.md 发送成功"
+  else
+    FAIL_ITEMS+=("test-cases.md:${HTTP_CODE}")
+    log_warn "test-cases.md 发送失败: ${BODY}"
+  fi
+else
+  log_warn "test-cases.md 不存在或已关闭发送"
+fi
+
+# ── 3. 发送人工审计清单 MD ──
+MANUAL_MD="${ARTIFACTS_DIR}/manual-audit-checklist.md"
+if [[ "${SEND_MD}" == "true" && -f "$MANUAL_MD" ]]; then
+  CAPTION="人工深度审计清单 ${REPO} | Run#${GITHUB_RUN_ID:-0}"
+  RESP=$(send_document "$MANUAL_MD" "$CAPTION")
+  parse_response "$RESP"
+  if [[ "$HTTP_CODE" == "200" ]]; then
+    SENT_ITEMS+=("manual-audit-checklist.md")
+    log_info "manual-audit-checklist.md 发送成功"
+  else
+    FAIL_ITEMS+=("manual-checklist:${HTTP_CODE}")
+  fi
+fi
+
+# ── 4. 发送合并运行日志 ──
+if [[ "${SEND_LOGS}" == "true" && -f "$COMBINED_LOG" ]]; then
+  CAPTION="审计运行日志 ${REPO} | Run#${GITHUB_RUN_ID:-0}"
+  RESP=$(send_document "$COMBINED_LOG" "$CAPTION")
+  parse_response "$RESP"
+  if [[ "$HTTP_CODE" == "200" ]]; then
+    SENT_ITEMS+=("audit-logs-combined.txt")
+    log_info "运行日志发送成功"
+  else
+    FAIL_ITEMS+=("audit-logs:${HTTP_CODE}")
+    log_warn "运行日志发送失败: ${BODY}"
+  fi
+fi
+
+# 记录日志
 {
   echo "timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-  echo "overall_status: ${OVERALL_STATUS}"
+  echo "sent: ${SENT_ITEMS[*]:-无}"
+  echo "failed: ${FAIL_ITEMS[*]:-无}"
   echo "audit_status: ${AUDIT_STATUS}"
-  echo "message_length: ${MSG_LEN}"
-  echo "token_configured: ${TOKEN_SET}"
   echo "chat_id: ${CHAT_ID}"
-  echo "curl_exit: ${CURL_EXIT}"
-  echo "http_code: ${HTTP_CODE}"
-  echo "response: ${BODY}"
 } > "$LOG_FILE"
 
-if [[ "$CURL_EXIT" -ne 0 || "$HTTP_CODE" != "200" ]]; then
-  ERR_DETAIL=""
-  if echo "$BODY" | grep -q '"error_code":401'; then
-    ERR_DETAIL="Bot Token 无效或已撤销，请在 @BotFather 重新生成并更新 TG_BOT_TOKEN Secret"
-  elif echo "$BODY" | grep -q '"error_code":400'; then
-    ERR_DETAIL="请求参数错误，常见原因: Chat ID 错误或 Bot 未加入群组"
-  elif echo "$BODY" | grep -q '"error_code":403'; then
-    ERR_DETAIL="Bot 被用户/群组封禁，或无发言权限"
-  else
-    ERR_DETAIL="HTTP ${HTTP_CODE}, 详见 telegram.log"
-  fi
-  log_warn "Telegram 推送失败: ${ERR_DETAIL}"
-  echo "::warning title=Telegram 发送失败::${ERR_DETAIL}"
-  write_diag "failed" "$ERR_DETAIL" "$HTTP_CODE"
-  exit 0
-fi
-
-log_info "Telegram 汇总通知发送成功"
-write_diag "success" "消息已发送" "$HTTP_CODE"
-
-# 写入 GitHub Step Summary（Actions UI 可见）
-if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-  cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+if [[ ${#SENT_ITEMS[@]} -gt 0 ]]; then
+  log_info "Telegram 推送完成: ${SENT_ITEMS[*]}"
+  write_diag "success" "已发送: ${SENT_ITEMS[*]}"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    cat >> "$GITHUB_STEP_SUMMARY" <<EOF
 
 ### Telegram 通知
-- 状态: ✅ 已发送
+- 已发送: ${SENT_ITEMS[*]}
+- 失败: ${FAIL_ITEMS[*]:-无}
 - Chat ID: \`${CHAT_ID}\`
-- 审计状态: ${AUDIT_STATUS}
-- 问题数: ${TOTAL_FINDINGS}
 
 EOF
+  fi
+else
+  log_warn "Telegram 无任何内容发送成功"
+  write_diag "failed" "全部失败: ${FAIL_ITEMS[*]:-未知}"
 fi
 
 exit 0

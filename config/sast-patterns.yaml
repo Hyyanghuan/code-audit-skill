@@ -1,0 +1,146 @@
+# SAST 词法/语法扫描 + 污点 Source/Sink 规则
+
+# ── 危险函数 / 敏感 API（词法扫描）──
+dangerous_functions:
+  - pattern: '\beval\s*\('
+    severity: high
+    category: command_injection
+    message: "危险函数 eval()"
+  - pattern: '\bexec\s*\('
+    severity: high
+    category: command_injection
+    message: "危险函数 exec()"
+  - pattern: '\bos\.system\s*\('
+    severity: high
+    category: command_injection
+    message: "系统命令执行 os.system()"
+  - pattern: '\bsubprocess\.(call|run|Popen)\s*\('
+    severity: medium
+    category: command_injection
+    message: "子进程调用 subprocess"
+  - pattern: '\bpickle\.loads?\s*\('
+    severity: high
+    category: deserialization
+    message: "不安全反序列化 pickle"
+  - pattern: '\byaml\.load\s*\([^)]*\)'
+    severity: high
+    category: deserialization
+    message: "yaml.load 应使用 safe_load"
+  - pattern: '(?i)innerHTML\s*='
+    severity: medium
+    category: xss
+    message: "DOM XSS 风险 innerHTML"
+  - pattern: '(?i)document\.write\s*\('
+    severity: medium
+    category: xss
+    message: "DOM XSS 风险 document.write"
+  - pattern: '(?i)(SELECT|INSERT|UPDATE|DELETE).*\+.*'
+    severity: high
+    category: sql_injection
+    message: "SQL 字符串拼接"
+  - pattern: '(?i)f["\'].*\{.*\}.*(SELECT|INSERT|UPDATE|DELETE)'
+    severity: medium
+    category: sql_injection
+    message: "f-string SQL 拼接风险"
+  - pattern: '\brequests\.(get|post|put|delete)\s*\([^)]*verify\s*=\s*False'
+    severity: medium
+    category: ssrf
+    message: "TLS 验证已禁用"
+  - pattern: '(?i)(password|secret|api_key|token)\s*=\s*["\'][^"\']{4,}["\']'
+    severity: high
+    category: hardcoded_secret
+    message: "硬编码敏感信息"
+
+# ── 污点 Source（外部可控输入）──
+taint_sources:
+  - pattern: '\brequest\.(args|form|json|data|cookies|headers|files)\b'
+    lang: python
+  - pattern: '\breq\.(body|query|params|headers|cookies)\b'
+    lang: javascript
+  - pattern: '\$_((GET|POST|REQUEST|COOKIE|SERVER)\[|FILES\[)'
+    lang: php
+  - pattern: '\binput\s*\('
+    lang: python
+  - pattern: '@RequestParam|@PathVariable|@RequestBody'
+    lang: java
+
+# ── 污点 Sink（高危汇聚点）──
+taint_sinks:
+  - pattern: '\b(cursor\.execute|executemany)\s*\('
+    category: sql_injection
+    lang: python
+  - pattern: '\beval\s*\(|exec\s*\(|os\.system\s*\('
+    category: command_injection
+    lang: python
+  - pattern: '\bopen\s*\([^)]*\+'
+    category: path_traversal
+    lang: python
+  - pattern: '(?i)innerHTML|dangerouslySetInnerHTML'
+    category: xss
+    lang: javascript
+  - pattern: '\bRuntime\.getRuntime\(\)\.exec\s*\('
+    category: command_injection
+    lang: java
+
+# ── 控制流风险模式 ──
+control_flow_patterns:
+  - pattern: '(?i)except\s*:\s*pass'
+    severity: medium
+    message: "空 except 吞没异常"
+  - pattern: '(?i)except\s+Exception\s*:\s*pass'
+    severity: medium
+    message: "宽泛异常捕获后忽略"
+  - pattern: '(?i)if\s+.*(admin|role|permission).*:\s*pass'
+    severity: high
+    message: "疑似权限校验空实现"
+  - pattern: '(?i)return\s+True\s*#.*auth'
+    severity: high
+    message: "疑似鉴权绕过"
+
+# ── 配置文件风险 ──
+config_patterns:
+  - pattern: '(?i)(password|secret|api_key)\s*[:=]\s*["\']?[^"\'\s]{3,}'
+    severity: high
+    message: "配置文件明文密码/密钥"
+  - pattern: '(?i)debug\s*[:=]\s*(true|1|yes)'
+    severity: medium
+    message: "生产配置开启 DEBUG"
+  - pattern: '(?i)ssl\s*[:=]\s*false|verify\s*[:=]\s*false'
+    severity: medium
+    message: "禁用 SSL 验证"
+  - pattern: 'EXPOSE\s+(22|3306|6379|27017)\s*$'
+    severity: low
+    message: "Dockerfile 暴露常见服务端口"
+  - pattern: 'USER\s+root'
+    severity: medium
+    message: "Dockerfile 以 root 用户运行"
+  - pattern: '(?i)chmod\s+[+]?[s]?\s*777'
+    severity: high
+    message: "过度宽松文件权限"
+
+# ── 专项安全模式 ──
+specialized_patterns:
+  - pattern: '(?i)(setcookie|Set-Cookie)(?!.*httponly)'
+    severity: medium
+    category: session_cookie
+    message: "Cookie 未设置 HttpOnly"
+  - pattern: '(?i)@login_required\s*\n\s*def\s+\w+.*\n\s*return'
+    severity: low
+    category: auth
+    message: "检查鉴权装饰器是否生效"
+  - pattern: '(?i)(upload|save).*filename(?!.*secure|sanitize|whitelist)'
+    severity: high
+    category: file_upload
+    message: "文件上传未校验文件名"
+  - pattern: '(?i)(price|amount|total)\s*=\s*request\.'
+    severity: high
+    category: business_risk
+    message: "金额/价格取自用户输入"
+  - pattern: '(?i)print\s*\(.*(password|token|secret|身份证|手机号)'
+    severity: high
+    category: log_desensitize
+    message: "日志打印敏感信息"
+
+file_globs:
+  source: ["**/*.py", "**/*.js", "**/*.ts", "**/*.java", "**/*.go", "**/*.php", "**/*.rb"]
+  config: ["**/*.yml", "**/*.yaml", "**/*.properties", "**/Dockerfile*", "**/*.env*", "**/nginx*.conf", "**/*.toml"]

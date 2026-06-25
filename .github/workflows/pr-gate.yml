@@ -21,9 +21,6 @@ jobs:
         with:
           fail-on-findings: 'true'
           enable-telegram: 'true'
-          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
-          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
-          telegram-bot-username: '@test_skills_yh_bot'
 
       - name: PR 评论（审计失败时）
         if: failure()

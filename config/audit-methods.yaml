@@ -1,0 +1,142 @@
+# 代码审计方法全覆盖配置
+# 六大类：SAST / DAST-IAST / 人工 / 覆盖率驱动 / 专项安全 / 辅助配套
+
+categories:
+  sast:
+    name: "静态代码审计 SAST"
+    methods:
+      - id: lexical_syntax
+        name: "词法/语法扫描"
+        module: sast_patterns
+        desc: "危险函数、敏感API、硬编码密钥、SQL拼接"
+      - id: data_flow
+        name: "数据流分析"
+        module: taint_analysis
+        desc: "追踪输入→处理→输出，污染数据检测"
+      - id: control_flow
+        name: "控制流分析"
+        module: control_flow
+        desc: "分支/循环/异常捕获、权限校验缺失"
+      - id: taint
+        name: "污点分析"
+        module: taint_analysis
+        desc: "外部输入污点→高危Sink点"
+      - id: sca
+        name: "依赖组件扫描 SCA"
+        module: dependency_scan
+        desc: "第三方库漏洞、版本风险"
+      - id: config_audit
+        name: "配置文件审计"
+        module: config_audit
+        desc: "yml/dockerfile/nginx 明文密码、调试开关"
+      - id: code_style
+        name: "代码规范审计"
+        module: super_linter
+        desc: "编码规范、异常处理、资源释放"
+
+  dast_iast:
+    name: "动态代码审计 DAST/IAST"
+    methods:
+      - id: iast_recommend
+        name: "IAST 运行时插桩建议"
+        module: runtime_audit
+        desc: "运行时插桩定位，补静态盲区"
+      - id: dynamic_taint
+        name: "动态污点追踪"
+        module: runtime_audit
+        desc: "运行时输入流转检测建议"
+      - id: runtime_memory
+        name: "运行时内存/变量审计"
+        module: runtime_audit
+        desc: "敏感信息内存明文、密码打日志"
+      - id: traffic_code
+        name: "流量联动代码审计"
+        module: runtime_audit
+        desc: "接口流量覆盖后端分支建议"
+
+  manual:
+    name: "人工深度审计"
+    methods:
+      - id: module_read
+        name: "逐模块通读审计"
+        module: manual_checklist
+      - id: key_function
+        name: "关键函数专项审计"
+        module: manual_checklist
+      - id: logic_bug
+        name: "逻辑漏洞审计"
+        module: manual_checklist
+      - id: crypto_key
+        name: "加密与密钥审计"
+        module: manual_checklist
+      - id: log_desensitize
+        name: "日志与脱敏审计"
+        module: manual_checklist
+
+  coverage:
+    name: "覆盖率驱动审计"
+    methods:
+      - id: line_coverage
+        name: "代码覆盖率审计"
+        module: coverage_audit
+      - id: branch_coverage
+        name: "分支全覆盖审计"
+        module: control_flow
+      - id: api_coverage
+        name: "接口全覆盖审计"
+        module: sast_patterns
+      - id: third_party_coverage
+        name: "第三方调用全覆盖"
+        module: dependency_scan
+
+  specialized:
+    name: "专项安全审计"
+    methods:
+      - id: auth_bypass
+        name: "权限体系审计"
+        module: specialized_security
+      - id: input_output
+        name: "输入输出过滤审计"
+        module: sast_patterns
+      - id: file_ops
+        name: "文件操作审计"
+        module: specialized_security
+      - id: session_cookie
+        name: "会话Cookie审计"
+        module: config_audit
+      - id: business_risk
+        name: "业务风险审计"
+        module: custom_rules
+      - id: container_image
+        name: "容器镜像审计"
+        module: config_audit
+
+  auxiliary:
+    name: "辅助配套审计"
+    methods:
+      - id: git_diff
+        name: "版本差分审计"
+        module: diff_audit
+      - id: unit_test_audit
+        name: "单元测试代码审计"
+        module: runtime_audit
+      - id: pre_commit_gate
+        name: "预提交门禁审计"
+        module: gitleaks
+
+# 模块与工具映射
+module_tools:
+  gitleaks: { tool: gitleaks, type: sast, method: lexical_syntax }
+  bandit: { tool: bandit, type: sast, method: taint }
+  super_linter: { tool: super-linter, type: sast, method: code_style }
+  dependency_scan: { tool: trivy, type: sast, method: sca }
+  custom_rules: { tool: yaml-rules, type: specialized, method: business_risk }
+  sast_patterns: { tool: pattern-engine, type: sast, method: lexical_syntax }
+  taint_analysis: { tool: taint-engine, type: sast, method: taint }
+  control_flow: { tool: cfg-heuristic, type: sast, method: control_flow }
+  config_audit: { tool: config-scanner, type: sast, method: config_audit }
+  diff_audit: { tool: git-diff, type: auxiliary, method: git_diff }
+  runtime_audit: { tool: runtime-advisor, type: dast_iast, method: iast_recommend }
+  manual_checklist: { tool: checklist-gen, type: manual, method: module_read }
+  coverage_audit: { tool: coverage-parser, type: coverage, method: line_coverage }
+  specialized_security: { tool: sec-patterns, type: specialized, method: auth_bypass }

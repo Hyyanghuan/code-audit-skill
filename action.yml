@@ -1,7 +1,7 @@
 name: 'Code Audit Skill'
 description: >
-  可复用代码审计 Composite Action：敏感密钥扫描 (gitleaks)、多语言静态规范 (super-linter)、
-  Python 安全 (bandit)、依赖漏洞检测 (trivy)、自定义业务规则，并可选推送 Telegram 通知。
+  全覆盖代码审计 Composite Action：SAST（词法/污点/控制流/配置/SCA）、DAST/IAST 建议、
+  专项安全、差分审计、覆盖率驱动、人工清单、gitleaks/bandit/trivy/super-linter + TG 推送。
 author: 'AIskiils'
 
 branding:
@@ -51,22 +51,58 @@ inputs:
     description: '审计完成后自动生成并执行验收测试用例'
     required: false
     default: 'true'
-
-  # --- Telegram 通知（敏感信息由调用方 secrets 传入，禁止硬编码）---
-  enable-telegram:
-    description: '启用 Telegram 结果推送'
+  enable-sast-patterns:
+    description: 'SAST 词法/语法扫描（危险函数、SQL拼接等）'
     required: false
-    default: 'false'
+    default: 'true'
+  enable-taint-analysis:
+    description: 'SAST 污点分析（Source→Sink）'
+    required: false
+    default: 'true'
+  enable-control-flow:
+    description: 'SAST 控制流分析（异常吞没、鉴权空实现）'
+    required: false
+    default: 'true'
+  enable-config-audit:
+    description: '配置文件审计（yml/Dockerfile/明文密码）'
+    required: false
+    default: 'true'
+  enable-specialized-security:
+    description: '专项安全审计（越权/文件上传/业务风险）'
+    required: false
+    default: 'true'
+  enable-diff-audit:
+    description: '版本差分审计（git diff 增量扫描）'
+    required: false
+    default: 'true'
+  enable-coverage-audit:
+    description: '覆盖率驱动审计（coverage.xml/lcov）'
+    required: false
+    default: 'true'
+  enable-runtime-audit:
+    description: 'DAST/IAST 运行时审计建议'
+    required: false
+    default: 'true'
+  enable-manual-checklist:
+    description: '生成人工深度审计清单'
+    required: false
+    default: 'true'
+
+  # --- Telegram 通知（默认读取 config/telegram.yaml 硬编码，workflow 可覆盖）---
+  enable-telegram:
+    description: '启用 Telegram 结果推送（默认 true，配置见 config/telegram.yaml）'
+    required: false
+    default: 'true'
   telegram-bot-token:
-    description: 'Telegram Bot Token（建议通过 secrets 传入）'
+    description: 'Telegram Bot Token（留空则使用 config/telegram.yaml）'
     required: false
     default: ''
   telegram-chat-id:
-    description: 'Telegram 群组/频道 Chat ID'
+    description: 'Telegram Chat ID（留空则使用 config/telegram.yaml）'
     required: false
     default: ''
   telegram-bot-username:
-    description: 'Bot 用户名（仅用于消息展示，可选）'
+    description: 'Bot 用户名（留空则使用 config/telegram.yaml）'
     required: false
     default: ''
 
@@ -125,6 +161,15 @@ runs:
         INPUT_ENABLE_DEPENDENCY_SCAN: ${{ inputs.enable-dependency-scan }}
         INPUT_ENABLE_CUSTOM_RULES: ${{ inputs.enable-custom-rules }}
         INPUT_ENABLE_TEST_CASES: ${{ inputs.enable-test-cases }}
+        INPUT_ENABLE_SAST_PATTERNS: ${{ inputs.enable-sast-patterns }}
+        INPUT_ENABLE_TAINT_ANALYSIS: ${{ inputs.enable-taint-analysis }}
+        INPUT_ENABLE_CONTROL_FLOW: ${{ inputs.enable-control-flow }}
+        INPUT_ENABLE_CONFIG_AUDIT: ${{ inputs.enable-config-audit }}
+        INPUT_ENABLE_SPECIALIZED_SECURITY: ${{ inputs.enable-specialized-security }}
+        INPUT_ENABLE_DIFF_AUDIT: ${{ inputs.enable-diff-audit }}
+        INPUT_ENABLE_COVERAGE_AUDIT: ${{ inputs.enable-coverage-audit }}
+        INPUT_ENABLE_RUNTIME_AUDIT: ${{ inputs.enable-runtime-audit }}
+        INPUT_ENABLE_MANUAL_CHECKLIST: ${{ inputs.enable-manual-checklist }}
         INPUT_ENABLE_TELEGRAM: ${{ inputs.enable-telegram }}
         INPUT_TELEGRAM_BOT_TOKEN: ${{ inputs.telegram-bot-token }}
         INPUT_TELEGRAM_CHAT_ID: ${{ inputs.telegram-chat-id }}
@@ -178,10 +223,91 @@ runs:
       run: bash "${{ github.action_path }}/scripts/run-custom-rules.sh"
       continue-on-error: true
 
+    - name: SAST 词法语法扫描
+      id: sast_patterns
+      if: steps.init.outputs.enable_sast_patterns == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: sast_patterns
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
+
+    - name: SAST 污点分析
+      id: taint_analysis
+      if: steps.init.outputs.enable_taint_analysis == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: taint_analysis
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
+
+    - name: SAST 控制流分析
+      id: control_flow
+      if: steps.init.outputs.enable_control_flow == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: control_flow
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
+
+    - name: 配置文件审计
+      id: config_audit
+      if: steps.init.outputs.enable_config_audit == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: config_audit
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
+
+    - name: 专项安全审计
+      id: specialized_security
+      if: steps.init.outputs.enable_specialized_security == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: specialized_security
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
+
+    - name: 版本差分审计
+      id: diff_audit
+      if: steps.init.outputs.enable_diff_audit == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: diff_audit
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
+
+    - name: 覆盖率驱动审计
+      id: coverage_audit
+      if: steps.init.outputs.enable_coverage_audit == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: coverage_audit
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
+
+    - name: DAST/IAST 运行时建议
+      id: runtime_audit
+      if: steps.init.outputs.enable_runtime_audit == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: runtime_audit
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
+
     - name: 汇总审计结果
       id: finalize
       shell: bash
       run: bash "${{ github.action_path }}/scripts/finalize-results.sh"
+
+    - name: 人工审计清单生成
+      id: manual_checklist
+      if: steps.init.outputs.enable_manual_checklist == 'true'
+      shell: bash
+      env:
+        AUDIT_MODULE: manual_checklist
+      run: bash "${{ github.action_path }}/scripts/run-audit-module.sh"
+      continue-on-error: true
 
     - name: 生成验收测试用例
       id: generate_tests
@@ -195,6 +321,12 @@ runs:
       shell: bash
       run: bash "${{ github.action_path }}/scripts/execute-test-cases.sh"
       continue-on-error: true
+
+    - name: 生成 Bug 报告
+      id: generate_bugs
+      if: always()
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/generate-bug-report.sh"
 
     - name: 上传审计日志制品
       if: steps.init.outputs.upload_artifacts == 'true'

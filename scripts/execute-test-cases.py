@@ -105,6 +105,15 @@ def check_empty_project_graceful():
     return True, f"空项目降级正常，audit_status={status}", True
 
 
+def check_file_exists(assertion):
+    fname = assertion["file"]
+    path = os.path.join(ARTIFACTS_DIR, fname)
+    if os.path.isfile(path):
+        size = os.path.getsize(path)
+        return True, f"文件 {fname} 存在 ({size} bytes)", True
+    return False, f"文件 {fname} 不存在", False
+
+
 def run_assertion(case):
     assertion = case.get("assertion", {})
     atype = assertion.get("type", "")
@@ -119,6 +128,7 @@ def run_assertion(case):
         "audit_summary": lambda: check_audit_summary(),
         "findings_consistency": lambda: check_findings_consistency(),
         "empty_project_graceful": lambda: check_empty_project_graceful(),
+        "file_exists": lambda: check_file_exists(assertion),
     }
     handler = handlers.get(atype)
     if not handler:
@@ -126,49 +136,15 @@ def run_assertion(case):
     return handler()
 
 
-def export_markdown(cases, stats):
-    md_path = os.path.join(ARTIFACTS_DIR, "test-cases.md")
-    lines = [
-        "# 代码审计验收测试用例",
-        "",
-        f"> 执行时间: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        f"> 总计: {stats['total']} | ✅ 通过: {stats['passed']} | ❌ 失败: {stats['failed']}",
-        "",
-        "| TC-ID | 测试功能 | 功能描述 | 测试内容描述 | 测试步骤 | 预期结果 | 测试结果 | 是否通过 |",
-        "|-------|----------|----------|--------------|----------|----------|----------|----------|",
-    ]
-    for c in cases:
-        steps = "<br>".join(f"{i+1}. {s}" for i, s in enumerate(c["test_steps"]))
-        passed = c.get("passed")
-        passed_str = "✅ 是" if passed is True else ("❌ 否" if passed is False else "⏳ 待执行")
-        lines.append(
-            f"| {c['tc_id']} | {c['test_function']} | {c['function_description']} "
-            f"| {c['test_content_description']} | {steps} | {c['expected_result']} "
-            f"| {c.get('test_result', '')} | {passed_str} |"
-        )
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-
-
-def export_csv(cases):
-    csv_path = os.path.join(ARTIFACTS_DIR, "test-cases.csv")
-    fields = ["TC-ID", "测试功能", "功能描述", "测试内容描述", "测试步骤",
-              "预期结果", "测试结果", "是否通过"]
-    with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
-        w.writeheader()
-        for c in cases:
-            passed = c.get("passed")
-            w.writerow({
-                "TC-ID": c["tc_id"],
-                "测试功能": c["test_function"],
-                "功能描述": c["function_description"],
-                "测试内容描述": c["test_content_description"],
-                "测试步骤": " | ".join(c["test_steps"]),
-                "预期结果": c["expected_result"],
-                "测试结果": c.get("test_result", ""),
-                "是否通过": "是" if passed is True else ("否" if passed is False else "待执行"),
-            })
+def export_reports(cases, stats):
+    """复用 generate-test-cases.py 的 MD/CSV 导出（含设计方法与场景分类）。"""
+    import importlib.util
+    gen_path = os.path.join(os.path.dirname(__file__), "generate-test-cases.py")
+    spec = importlib.util.spec_from_file_location("gen_tc", gen_path)
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    gen.export_markdown(cases, stats, executed=True)
+    gen.export_csv(cases)
 
 
 def merge_into_audit_summary(cases, stats):
@@ -184,6 +160,8 @@ def merge_into_audit_summary(cases, stats):
             {
                 "tc_id": c["tc_id"],
                 "test_function": c["test_function"],
+                "design_method": c.get("design_method", ""),
+                "scenario_category": c.get("scenario_category", ""),
                 "test_result": c.get("test_result", ""),
                 "passed": c.get("passed"),
                 "passed_label": "是" if c.get("passed") is True else ("否" if c.get("passed") is False else "待执行"),
@@ -243,8 +221,7 @@ def main():
     with open(CASES_JSON, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
-    export_markdown(cases, stats)
-    export_csv(cases)
+    export_reports(cases, stats)
     merge_into_audit_summary(cases, stats)
 
     log(f"执行完成: 通过={passed_count} 失败={failed_count}")
