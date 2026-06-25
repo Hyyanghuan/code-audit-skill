@@ -9,6 +9,7 @@
 - [架构说明](#架构说明)
 - [快速接入（5 步）](#快速接入5-步)
 - [Telegram 写死配置方案](#telegram-写死配置方案)
+- [第三方引用时如何配置 TG](#第三方引用时如何配置-tg)
 - [完整配置参考](#完整配置参考)
 - [审计能力覆盖](#审计能力覆盖)
 - [执行流程](#执行流程)
@@ -192,6 +193,139 @@ with:
 | 默认开启 | `test-cases.md` 测试用例报告 |
 | 默认开启 | `manual-audit-checklist.md` 人工审计清单 |
 | 默认开启 | `audit-logs-combined.txt` 全量运行日志 |
+
+---
+
+## 第三方引用时如何配置 TG
+
+业务仓库通过 `uses: YOUR_ORG/code-audit-skill@main` 引用本 Skill 时，TG 配置的读取与填写方式如下。
+
+### 核心原理
+
+Composite Action 运行时，`config/telegram.yaml` 从 **Skill 仓库**加载（路径由 `GITHUB_ACTION_PATH` 决定），**不是**从业务仓库加载：
+
+```
+业务仓库 workflow
+  uses: YOUR_ORG/code-audit-skill@main
+         ↓
+  实际读取 Skill 仓库内的 config/telegram.yaml
+```
+
+因此：**在 Skill 仓库配好 TG，所有第三方引用方默认共用同一套配置**，业务仓通常无需额外配置。
+
+### 配置优先级
+
+```
+workflow with 参数（业务仓传入）  >  config/telegram.yaml（Skill 仓写死值）
+```
+
+### 方式一：零配置（推荐，Skill 仓统一通知群）
+
+**适用**：全公司 / 全团队共用一个 TG 通知群。
+
+**步骤 1**：在 **Skill 仓库**编辑 [`config/telegram.yaml`](config/telegram.yaml) 并 push 到 `main`：
+
+```yaml
+enabled: true
+bot_token: "你的BotToken"
+chat_id: "-1004400849148"
+bot_username: "@test_skills_yh_bot"
+```
+
+**步骤 2**：业务仓库 workflow **只写**：
+
+```yaml
+- uses: YOUR_ORG/code-audit-skill@main
+  with:
+    enable-telegram: 'true'   # 可省略，默认已是 true
+```
+
+无需在业务仓配置 Secrets，无需传 `telegram-bot-token`。
+
+### 方式二：业务仓单独覆盖（每个项目不同 TG 群）
+
+**适用**：某个业务项目要推送到**自己的** Telegram 群。
+
+**步骤 1**：在 **业务仓库**配置 Secrets：
+
+`Settings → Secrets and variables → Actions → New repository secret`
+
+| Secret 名称 | 值 |
+|-------------|-----|
+| `TG_BOT_TOKEN` | 从 @BotFather 获取的 Bot Token |
+| `TG_CHAT_ID` | 群组 Chat ID（群组一般为负数） |
+
+**步骤 2**：业务仓库 workflow 显式传入（会覆盖 Skill 仓写死配置）：
+
+```yaml
+- uses: YOUR_ORG/code-audit-skill@main
+  with:
+    enable-telegram: 'true'
+    telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
+    telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
+    telegram-bot-username: '@your_bot'
+```
+
+### 方式三：workflow 明文传入（仅本地测试）
+
+```yaml
+with:
+  enable-telegram: 'true'
+  telegram-bot-token: '1234567890:AAH...'
+  telegram-chat-id: '-1004400849148'
+```
+
+> 不推荐用于生产环境，Token 可能暴露在 workflow 文件或日志中。
+
+### 配置方式对照表
+
+| 场景 | 谁配置 TG | 业务仓 workflow | 业务仓 Secrets |
+|------|-----------|-----------------|----------------|
+| 全团队统一通知群 | **Skill 仓** `config/telegram.yaml` | 仅 `enable-telegram: true` | 不需要 |
+| 每个项目独立通知群 | 业务仓 Secrets | 传 `telegram-bot-token` / `chat-id` | 需要 |
+| 临时测试群 | workflow 参数 | 明文或 Secrets 传入 | 可选 |
+| 关闭 TG 通知 | 业务仓 workflow | `enable-telegram: 'false'` | — |
+
+### 业务仓完整示例（两种方案）
+
+```yaml
+name: Code Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 方案 A：使用 Skill 仓统一 TG（推荐，零配置）
+      - uses: YOUR_ORG/code-audit-skill@main
+        with:
+          fail-on-findings: 'true'
+          enable-telegram: 'true'
+
+      # 方案 B：本项目使用独立 TG 群（需先配置 Secrets）
+      # - uses: YOUR_ORG/code-audit-skill@main
+      #   with:
+      #     fail-on-findings: 'true'
+      #     enable-telegram: 'true'
+      #     telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
+      #     telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
+```
+
+### 注意事项
+
+1. **Bot 必须加入目标群**：将 Bot 拉入群组并赋予发消息权限，否则 API 返回 403。
+2. **Skill 仓库建议 Public**：公开仓库可被任意项目引用；私有仓库需额外授权。
+3. **Fork PR 限制**：来自 fork 的 PR 无法读取业务仓 Secrets，方式二在 fork PR 场景下 TG 可能发送失败。
+4. **修改生效**：改 Skill 仓 `config/telegram.yaml` 后 push 到 `main`，所有引用 `@main` 的项目下次运行即生效。
 
 ---
 
