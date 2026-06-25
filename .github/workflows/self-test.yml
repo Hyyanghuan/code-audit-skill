@@ -1,0 +1,167 @@
+name: Self Test - All Scenarios
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: '测试场景（留空=全部）'
+        required: false
+        type: choice
+        options:
+          - all
+          - normal
+          - empty
+          - multi-language
+          - no-python
+          - invalid
+          - network-error
+          - params-tolerance
+        default: all
+
+permissions:
+  contents: read
+
+env:
+  TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+  TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+
+jobs:
+  # ── 场景 1：正常项目（应通过或仅有 low 级别提示）──
+  scenario-normal:
+    if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'normal' || github.event.inputs.scenario == ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: '[正常] 干净代码审计'
+        uses: ./
+        with:
+          working-directory: test-fixtures/normal-project
+          fail-on-findings: 'false'
+          enable-telegram: 'true'
+          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
+          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
+          telegram-bot-username: '@test_skills_yh_bot'
+
+  # ── 场景 2：空项目（全部跳过，不失败）──
+  scenario-empty:
+    if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'empty'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: '[空项目] 无代码降级跳过'
+        uses: ./
+        with:
+          working-directory: test-fixtures/empty-project
+          fail-on-findings: 'false'
+          enable-telegram: 'false'
+
+  # ── 场景 3：多语言项目 ──
+  scenario-multi-lang:
+    if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'multi-language'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: '[多语言] Python+JS+YAML'
+        uses: ./
+        with:
+          working-directory: test-fixtures/multi-language
+          fail-on-findings: 'false'
+          enable-telegram: 'true'
+          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
+          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
+          telegram-bot-username: '@test_skills_yh_bot'
+
+  # ── 场景 4：无 Python（bandit 自动跳过）──
+  scenario-no-python:
+    if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'no-python'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: '[无Python] 仅 JS 项目'
+        uses: ./
+        with:
+          working-directory: test-fixtures/no-python
+          fail-on-findings: 'false'
+          enable-bandit: 'true'
+          enable-telegram: 'false'
+
+  # ── 场景 5：非法/违规代码（应失败，模拟分支保护阻断）──
+  scenario-invalid:
+    if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'invalid'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: '[违规] 密钥+eval+漏洞依赖'
+        id: audit
+        uses: ./
+        continue-on-error: true
+        with:
+          working-directory: test-fixtures/invalid-code
+          fail-on-findings: 'true'
+          enable-super-linter: 'false'
+          enable-dependency-scan: 'false'
+          enable-telegram: 'true'
+          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
+          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
+          telegram-bot-username: '@test_skills_yh_bot'
+      - name: 验证违规场景确实失败
+        run: |
+          if [[ "${{ steps.audit.outputs.audit-status }}" != "failure" ]]; then
+            echo "::error::期望 audit-status=failure，实际=${{ steps.audit.outputs.audit-status }}"
+            exit 1
+          fi
+          echo "✅ 违规场景正确触发 failure"
+
+  # ── 场景 6：网络异常（无效 TG token，不阻断主流程）──
+  scenario-network-error:
+    if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'network-error'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: '[网络异常] 无效 TG Token'
+        uses: ./
+        with:
+          working-directory: test-fixtures/normal-project
+          fail-on-findings: 'false'
+          enable-telegram: 'true'
+          telegram-bot-token: 'INVALID_TOKEN_FOR_TEST'
+          telegram-chat-id: '-1'
+          telegram-bot-username: '@invalid_bot'
+
+  # ── 场景 7：入参容错（空值/大小写/特殊字符）──
+  scenario-params:
+    if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'params-tolerance'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: '[入参容错] 大小写混合开关'
+        uses: ./
+        with:
+          working-directory: test-fixtures/normal-project
+          fail-on-findings: 'FALSE'
+          enable-gitleaks: 'TRUE'
+          enable-bandit: 'Yes'
+          enable-super-linter: 'NO'
+          enable-dependency-scan: '0'
+          enable-custom-rules: '1'
+          enable-telegram: 'false'
+          super-linter-languages: 'Python, YAML'
+
+  # ── 场景 8：手动触发 + 全模块 + TG 通知 ──
+  scenario-manual-full:
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.scenario == 'all' || github.event.inputs.scenario == '')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: '[手动触发] 全模块审计'
+        uses: ./
+        with:
+          working-directory: '.'
+          fail-on-findings: 'false'
+          enable-telegram: 'true'
+          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
+          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
+          telegram-bot-username: '@test_skills_yh_bot'

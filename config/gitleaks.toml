@@ -1,0 +1,24 @@
+title = "Code Audit Skill - Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "忽略编译产物与依赖目录"
+paths = [
+  '''node_modules''',
+  '''vendor''',
+  '''\.venv''',
+  '''venv''',
+  '''dist''',
+  '''build''',
+  '''target''',
+  '''__pycache__''',
+  '''coverage''',
+  '''\.tox''',
+  '''site-packages''',
+  '''test-fixtures''',
+]
+
+[allowlist.regexTarget]
+line = '''(?:example|placeholder|dummy|fake|test|xxx+)'''

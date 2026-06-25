@@ -1,0 +1,225 @@
+name: 'Code Audit Skill'
+description: >
+  可复用代码审计 Composite Action：敏感密钥扫描 (gitleaks)、多语言静态规范 (super-linter)、
+  Python 安全 (bandit)、依赖漏洞检测 (trivy)、自定义业务规则，并可选推送 Telegram 通知。
+author: 'AIskiils'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  working-directory:
+    description: '审计目标目录（相对仓库根路径）'
+    required: false
+    default: '.'
+  fail-on-findings:
+    description: '发现高危问题时是否令 Action 失败（配合分支保护阻断 PR）'
+    required: false
+    default: 'true'
+  upload-artifacts:
+    description: '是否上传扫描日志制品'
+    required: false
+    default: 'true'
+  artifact-retention-days:
+    description: '制品保留天数'
+    required: false
+    default: '14'
+
+  # --- 模块开关（支持 true/false/1/0/yes/no，大小写不敏感）---
+  enable-gitleaks:
+    description: '启用 gitleaks 敏感密钥扫描'
+    required: false
+    default: 'true'
+  enable-super-linter:
+    description: '启用 super-linter 多语言静态规范检查'
+    required: false
+    default: 'true'
+  enable-bandit:
+    description: '启用 bandit Python 安全扫描'
+    required: false
+    default: 'true'
+  enable-dependency-scan:
+    description: '启用依赖漏洞检测 (trivy)'
+    required: false
+    default: 'true'
+  enable-custom-rules:
+    description: '启用自定义业务规则扫描'
+    required: false
+    default: 'true'
+  enable-test-cases:
+    description: '审计完成后自动生成并执行验收测试用例'
+    required: false
+    default: 'true'
+
+  # --- Telegram 通知（敏感信息由调用方 secrets 传入，禁止硬编码）---
+  enable-telegram:
+    description: '启用 Telegram 结果推送'
+    required: false
+    default: 'false'
+  telegram-bot-token:
+    description: 'Telegram Bot Token（建议通过 secrets 传入）'
+    required: false
+    default: ''
+  telegram-chat-id:
+    description: 'Telegram 群组/频道 Chat ID'
+    required: false
+    default: ''
+  telegram-bot-username:
+    description: 'Bot 用户名（仅用于消息展示，可选）'
+    required: false
+    default: ''
+
+  # --- 工具配置 ---
+  gitleaks-config:
+    description: 'gitleaks 配置文件路径（可选，默认使用内置配置）'
+    required: false
+    default: ''
+  custom-rules-path:
+    description: '自定义业务规则文件路径（可选）'
+    required: false
+    default: ''
+  ignore-paths-file:
+    description: '额外忽略路径配置文件（可选）'
+    required: false
+    default: ''
+  super-linter-languages:
+    description: 'super-linter 语言列表，逗号分隔（留空则自动检测）'
+    required: false
+    default: ''
+
+outputs:
+  audit-status:
+    description: '审计总体状态：success | failure | skipped'
+    value: ${{ steps.finalize.outputs.audit-status }}
+  findings-count:
+    description: '发现问题总数'
+    value: ${{ steps.finalize.outputs.findings-count }}
+  results-json:
+    description: '各模块结果 JSON 路径'
+    value: ${{ steps.finalize.outputs.results-json }}
+  test-cases-passed:
+    description: '通过的测试用例数'
+    value: ${{ steps.execute_tests.outputs.test-cases-passed || '0' }}
+  test-cases-failed:
+    description: '失败的测试用例数'
+    value: ${{ steps.execute_tests.outputs.test-cases-failed || '0' }}
+  test-cases-all-passed:
+    description: '全部测试用例是否通过'
+    value: ${{ steps.execute_tests.outputs.test-cases-all-passed || 'skipped' }}
+
+runs:
+  using: composite
+  steps:
+    - name: 初始化审计环境
+      id: init
+      shell: bash
+      env:
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        INPUT_UPLOAD_ARTIFACTS: ${{ inputs.upload-artifacts }}
+        INPUT_ARTIFACT_RETENTION_DAYS: ${{ inputs.artifact-retention-days }}
+        INPUT_ENABLE_GITLEAKS: ${{ inputs.enable-gitleaks }}
+        INPUT_ENABLE_SUPER_LINTER: ${{ inputs.enable-super-linter }}
+        INPUT_ENABLE_BANDIT: ${{ inputs.enable-bandit }}
+        INPUT_ENABLE_DEPENDENCY_SCAN: ${{ inputs.enable-dependency-scan }}
+        INPUT_ENABLE_CUSTOM_RULES: ${{ inputs.enable-custom-rules }}
+        INPUT_ENABLE_TEST_CASES: ${{ inputs.enable-test-cases }}
+        INPUT_ENABLE_TELEGRAM: ${{ inputs.enable-telegram }}
+        INPUT_TELEGRAM_BOT_TOKEN: ${{ inputs.telegram-bot-token }}
+        INPUT_TELEGRAM_CHAT_ID: ${{ inputs.telegram-chat-id }}
+        INPUT_TELEGRAM_BOT_USERNAME: ${{ inputs.telegram-bot-username }}
+        INPUT_GITLEAKS_CONFIG: ${{ inputs.gitleaks-config }}
+        INPUT_CUSTOM_RULES_PATH: ${{ inputs.custom-rules-path }}
+        INPUT_IGNORE_PATHS_FILE: ${{ inputs.ignore-paths-file }}
+        INPUT_SUPER_LINTER_LANGUAGES: ${{ inputs.super-linter-languages }}
+      run: bash "${{ github.action_path }}/scripts/init.sh"
+
+    - name: 检测项目语言与结构
+      id: detect
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/detect-languages.sh"
+
+    - name: Gitleaks 敏感密钥扫描
+      id: gitleaks
+      if: steps.init.outputs.enable_gitleaks == 'true'
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/run-gitleaks.sh"
+      continue-on-error: true
+
+    - name: Super-Linter 多语言规范检查
+      id: super_linter
+      if: steps.init.outputs.enable_super_linter == 'true' && steps.detect.outputs.has_lintable_code == 'true'
+      shell: bash
+      env:
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: bash "${{ github.action_path }}/scripts/run-super-linter.sh"
+      continue-on-error: true
+
+    - name: Bandit Python 安全扫描
+      id: bandit
+      if: steps.init.outputs.enable_bandit == 'true' && steps.detect.outputs.has_python == 'true'
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/run-bandit.sh"
+      continue-on-error: true
+
+    - name: 依赖漏洞检测
+      id: dependency
+      if: steps.init.outputs.enable_dependency_scan == 'true' && steps.detect.outputs.has_dependencies == 'true'
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/run-dependency-scan.sh"
+      continue-on-error: true
+
+    - name: 自定义业务规则扫描
+      id: custom_rules
+      if: steps.init.outputs.enable_custom_rules == 'true'
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/run-custom-rules.sh"
+      continue-on-error: true
+
+    - name: 汇总审计结果
+      id: finalize
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/finalize-results.sh"
+
+    - name: 生成验收测试用例
+      id: generate_tests
+      if: steps.init.outputs.enable_test_cases == 'true'
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/generate-test-cases.sh"
+
+    - name: 执行验收测试用例
+      id: execute_tests
+      if: steps.init.outputs.enable_test_cases == 'true'
+      shell: bash
+      run: bash "${{ github.action_path }}/scripts/execute-test-cases.sh"
+      continue-on-error: true
+
+    - name: 上传审计日志制品
+      if: steps.init.outputs.upload_artifacts == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: code-audit-logs-${{ github.run_id }}
+        path: ${{ steps.init.outputs.audit_dir }}/artifacts/
+        retention-days: ${{ inputs.artifact-retention-days }}
+        if-no-files-found: warn
+
+    - name: 推送 Telegram 通知
+      if: always() && steps.init.outputs.enable_telegram == 'true'
+      shell: bash
+      continue-on-error: true
+      env:
+        INPUT_TELEGRAM_BOT_TOKEN: ${{ inputs.telegram-bot-token }}
+        INPUT_TELEGRAM_CHAT_ID: ${{ inputs.telegram-chat-id }}
+        INPUT_TELEGRAM_BOT_USERNAME: ${{ inputs.telegram-bot-username }}
+      run: bash "${{ github.action_path }}/scripts/send-telegram.sh"
+
+    - name: 审计失败判定
+      if: steps.finalize.outputs.audit-status == 'failure' && steps.init.outputs.fail_on_findings == 'true'
+      shell: bash
+      run: |
+        echo "::error::代码审计未通过，发现 ${FINDINGS_COUNT:-0} 个问题。详见制品 code-audit-logs-${{ github.run_id }}"
+        exit 1
+      env:
+        FINDINGS_COUNT: ${{ steps.finalize.outputs.findings-count }}

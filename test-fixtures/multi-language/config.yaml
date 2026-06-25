@@ -1,0 +1,4 @@
+app:
+  name: multi-language-demo
+  debug: false
+  port: 8080

@@ -1,0 +1,59 @@
+# 自定义业务规则
+# severity: high | medium | low
+# pattern: Python 正则表达式
+# paths: 可选 glob 限制扫描范围
+
+rules:
+  - id: no-eval
+    pattern: '\beval\s*\('
+    severity: high
+    message: "禁止使用 eval()，存在代码注入风险"
+    paths:
+      - "**/*.py"
+      - "**/*.js"
+      - "**/*.ts"
+
+  - id: no-exec
+    pattern: '\bexec\s*\('
+    severity: high
+    message: "禁止使用 exec()，存在代码注入风险"
+    paths:
+      - "**/*.py"
+
+  - id: no-hardcoded-password
+    pattern: '(?i)(password|passwd|pwd)\s*=\s*[''"][^''"]{3,}[''"]'
+    severity: high
+    message: "检测到硬编码密码，请使用环境变量或密钥管理"
+    paths:
+      - "**/*.py"
+      - "**/*.js"
+      - "**/*.ts"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.env*"
+
+  - id: no-sql-concat
+    pattern: '(?i)(SELECT|INSERT|UPDATE|DELETE).*\+.*'
+    severity: medium
+    message: "疑似 SQL 字符串拼接，建议使用参数化查询"
+    paths:
+      - "**/*.py"
+      - "**/*.js"
+      - "**/*.java"
+
+  - id: no-debug-flag-prod
+    pattern: '(?i)(DEBUG\s*=\s*True|debug:\s*true)'
+    severity: medium
+    message: "生产配置不应开启 DEBUG 模式"
+    paths:
+      - "**/*.py"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.json"
+
+  - id: todo-fixme-tracker
+    pattern: '(?i)(FIXME|HACK|XXX):'
+    severity: low
+    message: "存在待修复标记 FIXME/HACK/XXX"
+    paths:
+      - "**/*"

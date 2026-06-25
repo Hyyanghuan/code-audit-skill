@@ -1,0 +1,19 @@
+# 默认忽略路径（编译产物、测试缓存、第三方依赖）
+# 每行一个 glob 模式，# 开头为注释
+
+**/node_modules/**
+**/vendor/**
+**/.venv/**
+**/venv/**
+**/__pycache__/**
+**/.pytest_cache/**
+**/dist/**
+**/build/**
+**/target/**
+**/.git/**
+**/coverage/**
+**/.tox/**
+**/.mypy_cache/**
+**/.ruff_cache/**
+**/site-packages/**
+**/test-fixtures/**
