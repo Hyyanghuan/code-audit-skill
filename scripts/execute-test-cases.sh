@@ -19,7 +19,7 @@ if [[ ! -f "${ARTIFACTS_DIR}/test-cases.json" ]]; then
   exit 0
 fi
 
-export ARTIFACTS_DIR RESULTS_DIR
+export ARTIFACTS_DIR RESULTS_DIR ABS_WORK_DIR
 
 set +e
 OUTPUT=$(python3 "${SCRIPT_DIR}/execute-test-cases.py" 2>&1 | tee -a "${ARTIFACTS_DIR}/test-cases-execution.log")

@@ -73,13 +73,16 @@ def load_json(path, default=None):
         return json.load(f)
 
 
-def tc_id(method: str, seq: int) -> str:
-    return f"TC-{method}-{seq:03d}"
+def tc_id(method: str, seq: int, prefix: str = "TC") -> str:
+    return f"{prefix}-{method}-{seq:03d}"
 
 
 def case(method, scenario, seq, func, desc, content, steps, expected, assertion, **extra):
+    category = extra.pop("case_category", "audit")
+    id_prefix = {"audit": "TC", "functional": "TC-FUNC", "api": "TC-API"}.get(category, "TC")
     return {
-        "tc_id": tc_id(method, seq),
+        "tc_id": tc_id(method, seq, prefix=id_prefix),
+        "case_category": category,
         "design_method": DESIGN_METHODS.get(method, method),
         "design_method_code": method,
         "scenario_category": SCENARIO_TYPES.get(scenario, scenario),
@@ -101,6 +104,7 @@ def build_all_cases(detect):
     cases = []
 
     def add(method, scenario, **kwargs):
+        kwargs.setdefault("case_category", "audit")
         counters[method] += 1
         cases.append(case(method, scenario, counters[method], **kwargs))
 
@@ -435,11 +439,11 @@ def build_methodology_audit_cases(detect, add_fn):
     return extra
 
 
-def export_markdown(cases, stats, executed=False):
-    md_path = os.path.join(ARTIFACTS_DIR, "test-cases.md")
+def export_markdown(cases, stats, executed=False, filename="test-cases.md", title="代码审计验收测试用例报告"):
+    md_path = os.path.join(ARTIFACTS_DIR, filename)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     lines = [
-        "# 代码审计验收测试用例报告",
+        f"# {title}",
         "",
         f"> 生成时间: {now}",
         f"> 仓库: {os.environ.get('GITHUB_REPOSITORY', '')}",
@@ -548,9 +552,68 @@ def export_csv(cases):
     return csv_path
 
 
+def _load_code_scanner():
+    import importlib.util
+    path = os.path.join(os.path.dirname(__file__), "code-test-scanner.py")
+    spec = importlib.util.spec_from_file_location("code_test_scanner", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _build_code_scan_cases(detect):
+    """扫描项目源码，生成功能与接口测试用例。"""
+    work_dir = os.environ.get("ABS_WORK_DIR") or os.environ.get("GITHUB_WORKSPACE") or "."
+    if detect.get("is_empty"):
+        return [], [], {"files_scanned": 0, "features": 0, "apis": 0}
+
+    scanner = _load_code_scanner()
+    scan = scanner.scan_codebase(work_dir)
+    func_counters = {m: 0 for m in DESIGN_METHODS}
+    api_counters = {m: 0 for m in DESIGN_METHODS}
+    functional_cases = []
+    api_cases = []
+
+    def add_func(method, scenario, **kwargs):
+        func_counters[method] += 1
+        kwargs["case_category"] = "functional"
+        functional_cases.append(case(method, scenario, func_counters[method], **kwargs))
+
+    def add_api(method, scenario, **kwargs):
+        api_counters[method] += 1
+        kwargs["case_category"] = "api"
+        api_cases.append(case(method, scenario, api_counters[method], **kwargs))
+
+    scanner.build_functional_cases(scan["functional"], add_func)
+    scanner.build_api_cases(scan["api"], add_api)
+    return functional_cases, api_cases, scan.get("stats", {})
+
+
+def _write_category_json(filename, cases, scan_stats=None, category_label=""):
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+        "work_dir": os.environ.get("WORK_DIR", "."),
+        "category": category_label,
+        "scan_stats": scan_stats or {},
+        "total_count": len(cases),
+        "executed": False,
+        "test_cases": cases,
+    }
+    path = os.path.join(ARTIFACTS_DIR, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    return path
+
+
 def main():
     detect = load_json(os.path.join(ARTIFACTS_DIR, "detect-languages.json"), {})
-    cases = build_all_cases(detect)
+    audit_cases = build_all_cases(detect)
+    for c in audit_cases:
+        c.setdefault("case_category", "audit")
+
+    functional_cases, api_cases, scan_stats = _build_code_scan_cases(detect)
+    cases = audit_cases + functional_cases + api_cases
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -559,6 +622,10 @@ def main():
         "design_methods": DESIGN_METHODS,
         "scenario_types": SCENARIO_TYPES,
         "total_count": len(cases),
+        "audit_case_count": len(audit_cases),
+        "functional_case_count": len(functional_cases),
+        "api_case_count": len(api_cases),
+        "code_scan_stats": scan_stats,
         "executed": False,
         "test_cases": cases,
     }
@@ -567,10 +634,30 @@ def main():
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
     stats = {"total": len(cases), "passed": 0, "failed": 0, "pending": len(cases)}
-    export_markdown(cases, stats)
+    export_markdown(audit_cases, stats, filename="test-cases.md", title="代码审计验收测试用例报告")
+    if functional_cases:
+        fstats = {"total": len(functional_cases), "passed": 0, "failed": 0, "pending": len(functional_cases)}
+        export_markdown(
+            functional_cases, fstats,
+            filename="test-cases-functional.md",
+            title="功能测试用例报告（源码扫描）",
+        )
+        _write_category_json("test-cases-functional.json", functional_cases, scan_stats, "functional")
+    if api_cases:
+        astats = {"total": len(api_cases), "passed": 0, "failed": 0, "pending": len(api_cases)}
+        export_markdown(
+            api_cases, astats,
+            filename="test-cases-api.md",
+            title="接口测试用例报告（源码扫描）",
+        )
+        _write_category_json("test-cases-api.json", api_cases, scan_stats, "api")
+
     export_csv(cases)
 
-    print(f"已生成 {len(cases)} 条测试用例（含九种设计方法）-> {OUTPUT_JSON}")
+    print(
+        f"已生成 {len(cases)} 条测试用例"
+        f"（审计 {len(audit_cases)} / 功能 {len(functional_cases)} / 接口 {len(api_cases)}）-> {OUTPUT_JSON}"
+    )
     return 0
 
 

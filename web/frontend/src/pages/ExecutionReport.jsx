@@ -64,7 +64,7 @@ export default function ExecutionReport() {
   return (
     <div className="bugs-archive-page">
       <h2>审计执行报告</h2>
-      <p className="hint">按任务 ID 查看 Bug 报告、测试用例、用例执行结果、功能清单与模块实现结果</p>
+      <p className="hint">查看 Bug 报告、验收/功能/接口测试用例及执行结果、功能清单与模块实现结果</p>
 
       <div className={`bugs-archive-layout ${fullscreen ? 'bugs-archive-layout-fs' : ''}`}>
         <div className="card bugs-job-list">
@@ -88,6 +88,8 @@ export default function ExecutionReport() {
                     {item.branch}
                     · {item.bug_count || item.total_findings || 0} 问题
                     {item.test_case_count ? ` · ${item.test_case_count} 用例` : ''}
+                    {item.functional_case_count ? ` · 功能 ${item.functional_case_count}` : ''}
+                    {item.api_case_count ? ` · 接口 ${item.api_case_count}` : ''}
                   </span>
                 </button>
               ))}

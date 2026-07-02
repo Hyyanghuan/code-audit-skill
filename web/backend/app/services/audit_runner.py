@@ -302,13 +302,13 @@ def _run_audit_sync(job_id: str, token: str, repo_full_name: str, branch: str) -
 
         ensure_not_cancelled(job_id)
         run_step("finalize", "finalize-results.sh")
-        run_step("generate_bug_report", "generate-bug-report.sh")
         if _is_enabled(audit_cfg, "enable_test_cases", "generate_test_cases"):
             run_step("generate_test_cases", "generate-test-cases.sh", "enable_test_cases")
             run_step("execute_test_cases", "execute-test-cases.sh", "enable_test_cases")
         else:
             tracker.skip("generate_test_cases", "测试用例生成已关闭")
             tracker.skip("execute_test_cases", "测试用例生成已关闭")
+        run_step("generate_bug_report", "generate-bug-report.sh")
 
         art_src = _audit_tmp(job_id) / "artifacts"
         if artifacts_dst.exists():

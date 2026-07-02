@@ -1,5 +1,38 @@
-export default function SettingsField({ field, value, onChange, disabled, pathSuggestions = [] }) {
+export default function SettingsField({ field, value, onChange, disabled, pathSuggestions = [], reportFiles = [] }) {
   const id = `field-${field.key}`
+
+  if (field.type === 'file_checklist') {
+    const filesValue = value && typeof value === 'object' ? value : {}
+    const options = reportFiles.length ? reportFiles : []
+    return (
+      <div className="field-row field-row-checklist">
+        <span className="field-label">{field.label}</span>
+        <div className="field-checklist-body">
+          {field.description && <p className="field-desc">{field.description}</p>}
+          <ul className="file-checklist">
+          {options.map((item) => (
+            <li key={item.filename}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={!!filesValue[item.filename]}
+                  disabled={disabled}
+                  onChange={(e) => onChange(field.key, {
+                    ...filesValue,
+                    [item.filename]: e.target.checked,
+                  })}
+                />
+                <span>{item.label}</span>
+                <code>{item.filename}</code>
+              </label>
+            </li>
+          ))}
+          </ul>
+          {field.hint && <p className="hint field-hint">{field.hint}</p>}
+        </div>
+      </div>
+    )
+  }
 
   if (field.type === 'boolean') {
     return (

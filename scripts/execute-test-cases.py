@@ -3,6 +3,7 @@
 import csv
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -105,6 +106,53 @@ def check_empty_project_graceful():
     return True, f"空项目降级正常，audit_status={status}", True
 
 
+def _work_root() -> str:
+    return os.environ.get("ABS_WORK_DIR") or os.environ.get("GITHUB_WORKSPACE") or "."
+
+
+def check_source_symbol_exists(assertion):
+    rel = assertion.get("file", "")
+    symbol = assertion.get("symbol", "")
+    kind = assertion.get("kind", "function")
+    path = os.path.join(_work_root(), rel)
+    if not os.path.isfile(path):
+        return False, f"源文件 {rel} 不存在", False
+    text = open(path, encoding="utf-8", errors="replace").read()
+    if kind == "class":
+        pat = rf"^class\s+{re.escape(symbol)}\s*[:\(]"
+    else:
+        pat = rf"^(?:async\s+)?def\s+{re.escape(symbol)}\s*\("
+        if not re.search(pat, text, re.MULTILINE):
+            pat = rf"(?:function|const)\s+{re.escape(symbol)}\s*[=\(]"
+    if re.search(pat, text, re.MULTILINE):
+        return True, f"符号 {symbol} 存在于 {rel}", True
+    return False, f"符号 {symbol} 未在 {rel} 中找到", False
+
+
+def check_api_route_in_source(assertion):
+    rel = assertion.get("file", "")
+    method = (assertion.get("method") or "GET").upper()
+    route = assertion.get("path", "")
+    path = os.path.join(_work_root(), rel)
+    if not os.path.isfile(path):
+        return False, f"源文件 {rel} 不存在", False
+    text = open(path, encoding="utf-8", errors="replace").read()
+    route_esc = re.escape(route)
+    patterns = [
+        rf'@(?:app|router|api|bp)\.{method.lower()}\(\s*["\']{route_esc}',
+        rf'@app\.route\(\s*["\']{route_esc}',
+        rf'path\(\s*["\']{route_esc}',
+        rf'\.{method.lower()}\(\s*[`"\']{route_esc}',
+        rf'HandleFunc\(\s*"{route_esc}"',
+    ]
+    for pat in patterns:
+        if re.search(pat, text, re.IGNORECASE):
+            return True, f"路由 {method} {route} 已在 {rel} 中定义", True
+    if route in text:
+        return True, f"路径 {route} 在 {rel} 中出现（静态匹配）", True
+    return False, f"路由 {method} {route} 未在 {rel} 中找到", False
+
+
 def check_file_exists(assertion):
     fname = assertion["file"]
     path = os.path.join(ARTIFACTS_DIR, fname)
@@ -129,6 +177,8 @@ def run_assertion(case):
         "findings_consistency": lambda: check_findings_consistency(),
         "empty_project_graceful": lambda: check_empty_project_graceful(),
         "file_exists": lambda: check_file_exists(assertion),
+        "source_symbol_exists": lambda: check_source_symbol_exists(assertion),
+        "api_route_in_source": lambda: check_api_route_in_source(assertion),
     }
     handler = handlers.get(atype)
     if not handler:
@@ -143,8 +193,40 @@ def export_reports(cases, stats):
     spec = importlib.util.spec_from_file_location("gen_tc", gen_path)
     gen = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gen)
-    gen.export_markdown(cases, stats, executed=True)
+
+    audit_cases = [c for c in cases if c.get("case_category", "audit") == "audit"]
+    func_cases = [c for c in cases if c.get("case_category") == "functional"]
+    api_cases = [c for c in cases if c.get("case_category") == "api"]
+
+    def _stats(subset):
+        passed = sum(1 for c in subset if c.get("passed") is True)
+        failed = sum(1 for c in subset if c.get("passed") is False)
+        return {"total": len(subset), "passed": passed, "failed": failed, "pending": len(subset) - passed - failed}
+
+    gen.export_markdown(audit_cases, _stats(audit_cases), executed=True, filename="test-cases.md",
+                        title="代码审计验收测试用例报告")
+    if func_cases:
+        gen.export_markdown(func_cases, _stats(func_cases), executed=True,
+                            filename="test-cases-functional.md", title="功能测试用例报告（源码扫描）")
+    if api_cases:
+        gen.export_markdown(api_cases, _stats(api_cases), executed=True,
+                            filename="test-cases-api.md", title="接口测试用例报告（源码扫描）")
     gen.export_csv(cases)
+
+
+def _write_category_report(filename, cases, stats):
+    subset_stats = {
+        "total": len(cases),
+        "passed": sum(1 for c in cases if c.get("passed") is True),
+        "failed": sum(1 for c in cases if c.get("passed") is False),
+    }
+    report = {
+        "executed_at": datetime.now(timezone.utc).isoformat(),
+        "stats": subset_stats,
+        "test_cases": cases,
+    }
+    with open(os.path.join(ARTIFACTS_DIR, filename), "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
 
 
 def merge_into_audit_summary(cases, stats):
@@ -180,6 +262,13 @@ def merge_into_audit_summary(cases, stats):
     }
     with open(os.path.join(ARTIFACTS_DIR, "test-cases-report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
+
+    func_cases = [c for c in cases if c.get("case_category") == "functional"]
+    api_cases = [c for c in cases if c.get("case_category") == "api"]
+    if func_cases:
+        _write_category_report("test-cases-functional-report.json", func_cases, stats)
+    if api_cases:
+        _write_category_report("test-cases-api-report.json", api_cases, stats)
 
 
 def main():

@@ -27,7 +27,8 @@ from app.services.findings_parser import get_step_detail, parse_findings
 from app.services.job_files import delete_audit_job
 from app.services.pipeline_tracker import load_pipeline, read_stream
 from app.services.scan_logs import build_all_scan_log, build_step_log, compute_progress
-from app.services.telegram_client import send_audit_documents
+from app.services.telegram_client import get_telegram_settings, send_audit_documents
+from app.settings_catalog import TELEGRAM_REPORT_FILES
 
 router = APIRouter(prefix="/audits", tags=["audits"])
 
@@ -295,6 +296,30 @@ def download_document(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{out_name}"'},
     )
+
+
+@router.get("/{job_id}/telegram/send-options")
+def telegram_send_options(job_id: str, _: str = Depends(get_current_user)):
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(404, "任务不存在")
+    cfg = get_telegram_settings()
+    art = _artifacts_path(job)
+    docs = {d["name"] for d in list_documents(art)}
+    selected = cfg.get("send_report_files") or {}
+    files = []
+    for item in TELEGRAM_REPORT_FILES:
+        name = item["filename"]
+        files.append({
+            "filename": name,
+            "label": item["label"],
+            "selected": bool(selected.get(name, item.get("default", False))),
+            "available": name in docs,
+        })
+    return {
+        "send_summary_default": bool(cfg.get("send_summary_message", True)),
+        "files": files,
+    }
 
 
 @router.post("/{job_id}/telegram/send")

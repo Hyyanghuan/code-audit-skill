@@ -228,6 +228,45 @@ AUDIT_GROUPS = [
     },
 ]
 
+TELEGRAM_REPORT_FILES = [
+    {"filename": "audit-summary.json", "label": "审计摘要 JSON", "default": True},
+    {"filename": "audit-bugs.md", "label": "Bug 报告 Markdown", "default": True},
+    {"filename": "test-cases.md", "label": "验收测试用例 Markdown", "default": True},
+    {"filename": "test-cases-functional.md", "label": "功能测试用例 Markdown", "default": True},
+    {"filename": "test-cases-api.md", "label": "接口测试用例 Markdown", "default": True},
+    {"filename": "test-cases-report.json", "label": "用例执行结果 JSON", "default": False},
+    {"filename": "test-cases-functional-report.json", "label": "功能用例执行结果 JSON", "default": False},
+    {"filename": "test-cases-api-report.json", "label": "接口用例执行结果 JSON", "default": False},
+    {"filename": "test-cases-execution.log", "label": "用例执行日志", "default": False},
+    {"filename": "manual-audit-checklist.md", "label": "需求/人工审计清单", "default": True},
+    {"filename": "audit-logs-combined.txt", "label": "合并运行日志", "default": True},
+]
+
+
+def get_default_send_report_files() -> dict:
+    return {item["filename"]: item.get("default", False) for item in TELEGRAM_REPORT_FILES}
+
+
+def migrate_send_report_files(stored: dict) -> dict:
+    """从旧版布尔开关迁移到 send_report_files。"""
+    if isinstance(stored.get("send_report_files"), dict) and stored["send_report_files"]:
+        defaults = get_default_send_report_files()
+        merged = {**defaults, **stored["send_report_files"]}
+        return {k: bool(v) for k, v in merged.items()}
+
+    files = get_default_send_report_files()
+    if stored.get("send_test_cases_md") is False:
+        for name in ("test-cases.md", "test-cases-functional.md", "test-cases-api.md"):
+            files[name] = False
+    if stored.get("send_bug_report_md") is False:
+        files["audit-bugs.md"] = False
+    if stored.get("send_audit_logs") is False:
+        files["audit-logs-combined.txt"] = False
+    if stored.get("send_requirements_checklist") is False:
+        files["manual-audit-checklist.md"] = False
+    return files
+
+
 TELEGRAM_GROUPS = [
     {
         "id": "telegram_connection",
@@ -243,13 +282,16 @@ TELEGRAM_GROUPS = [
     {
         "id": "telegram_send",
         "label": "Telegram 推送内容",
-        "doc": "控制手动/自动推送时包含哪些附件。",
+        "doc": "文字摘要与一键发送报告时包含的文件；未勾选的文件不会发送到 Telegram 群。",
         "fields": [
             {"key": "send_summary_message", "label": "发送文字摘要", "type": "boolean", "default": True},
-            {"key": "send_test_cases_md", "label": "发送测试用例 Markdown", "type": "boolean", "default": True},
-            {"key": "send_bug_report_md", "label": "发送 Bug 报告 Markdown", "type": "boolean", "default": True},
-            {"key": "send_audit_logs", "label": "发送合并运行日志", "type": "boolean", "default": True},
-            {"key": "send_requirements_checklist", "label": "发送需求清单", "type": "boolean", "default": True},
+            {
+                "key": "send_report_files",
+                "label": "一键发送报告文件",
+                "type": "file_checklist",
+                "default": None,
+                "description": "任务详情页「发送 TG」与审计完成自动推送时，仅发送已勾选的文件。",
+            },
             {
                 "key": "max_log_size_kb",
                 "label": "日志大小上限（KB）",
@@ -323,7 +365,9 @@ def get_default_audit_settings() -> dict:
 
 
 def get_default_telegram_settings() -> dict:
-    return _field_defaults(TELEGRAM_GROUPS)
+    defaults = _field_defaults(TELEGRAM_GROUPS)
+    defaults["send_report_files"] = get_default_send_report_files()
+    return defaults
 
 
 def load_preset_modules(preset: str) -> dict:

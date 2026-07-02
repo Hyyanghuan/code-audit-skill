@@ -11,6 +11,7 @@ from app.services.telegram_client import get_telegram_settings, save_telegram_se
 from app.settings_catalog import (
     AUDIT_GROUPS,
     TELEGRAM_GROUPS,
+    TELEGRAM_REPORT_FILES,
     get_tool_path_suggestions,
     list_presets_meta,
 )
@@ -23,6 +24,7 @@ def settings_catalog(_: str = Depends(get_current_user)):
     return {
         "audit_groups": AUDIT_GROUPS,
         "telegram_groups": TELEGRAM_GROUPS,
+        "telegram_report_files": TELEGRAM_REPORT_FILES,
         "presets": list_presets_meta(),
         "tool_path_suggestions": get_tool_path_suggestions(),
     }

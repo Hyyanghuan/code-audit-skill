@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import api from '../api'
 import SettingsField from '../components/SettingsField'
 
-function SettingsSection({ group, values, onChange, pathSuggestions = {}, toolSuggestions = {} }) {
+function SettingsSection({ group, values, onChange, pathSuggestions = {}, toolSuggestions = {}, reportFiles = [] }) {
   return (
     <div className="card settings-group">
       <h3>{group.label}</h3>
@@ -14,6 +14,7 @@ function SettingsSection({ group, values, onChange, pathSuggestions = {}, toolSu
           value={values[field.key]}
           onChange={onChange}
           pathSuggestions={toolSuggestions[field.key] || pathSuggestions[field.key] || []}
+          reportFiles={reportFiles}
         />
       ))}
     </div>
@@ -22,7 +23,9 @@ function SettingsSection({ group, values, onChange, pathSuggestions = {}, toolSu
 
 export default function Settings() {
   const [tab, setTab] = useState('audit')
-  const [catalog, setCatalog] = useState({ audit_groups: [], telegram_groups: [], presets: [], tool_path_suggestions: {} })
+  const [catalog, setCatalog] = useState({
+    audit_groups: [], telegram_groups: [], telegram_report_files: [], presets: [], tool_path_suggestions: {},
+  })
   const [auditValues, setAuditValues] = useState({})
   const [tgValues, setTgValues] = useState({})
   const [msg, setMsg] = useState('')
@@ -146,7 +149,14 @@ export default function Settings() {
       {tab === 'telegram' && (
         <>
           {(catalog.telegram_groups || []).map((group) => (
-            <SettingsSection key={group.id} group={group} values={tgValues} onChange={onTgChange} toolSuggestions={{}} />
+            <SettingsSection
+              key={group.id}
+              group={group}
+              values={tgValues}
+              onChange={onTgChange}
+              toolSuggestions={{}}
+              reportFiles={catalog.telegram_report_files || []}
+            />
           ))}
           <button className="btn" onClick={saveTelegram} disabled={saving}>{saving ? '保存中…' : '保存 Telegram 配置'}</button>
         </>

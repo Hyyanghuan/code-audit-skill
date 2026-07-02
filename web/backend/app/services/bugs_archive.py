@@ -74,12 +74,12 @@ def _test_case_count(artifacts: Path) -> int:
     return len(cases) if isinstance(cases, list) else 0
 
 
-def _build_test_cases_md_from_json(data: dict) -> str:
+def _build_test_cases_md_from_json(data: dict, title: str = "验收测试用例") -> str:
     cases = data.get("test_cases") or []
     if not cases:
         return ""
     lines = [
-        "# 验收测试用例",
+        f"# {title}",
         "",
         f"- 用例总数: {len(cases)}",
         f"- 已执行: {'是' if data.get('executed') else '否'}",
@@ -96,6 +96,58 @@ def _build_test_cases_md_from_json(data: dict) -> str:
             f"| {c.get('expected_result', '')} | {c.get('test_result', '待执行')} | {ps} |"
         )
     return "\n".join(lines)
+
+
+def _filter_cases_by_category(data: dict | None, category: str) -> list:
+    cases = (data or {}).get("test_cases") or []
+    return [c for c in cases if c.get("case_category", "audit") == category]
+
+
+def _build_category_test_md(cases: list, title: str, stats: dict | None = None) -> str:
+    if not cases:
+        return ""
+    lines = [f"# {title}", ""]
+    if stats:
+        lines.append(
+            f"- 总数: {stats.get('total', len(cases))} · "
+            f"通过: {stats.get('passed', 0)} · 失败: {stats.get('failed', 0)}"
+        )
+        lines.append("")
+    lines.extend([
+        "| TC-ID | 设计方法 | 场景 | 测试功能 | 功能描述 | 预期结果 | 测试结果 | 通过 |",
+        "|-------|----------|------|----------|----------|----------|----------|------|",
+    ])
+    for c in cases:
+        passed = c.get("passed")
+        ps = "是" if passed is True else ("否" if passed is False else "待执行")
+        lines.append(
+            f"| {c.get('tc_id', '')} | {c.get('design_method', '')} | {c.get('scenario_category', '')} "
+            f"| {c.get('test_function', '')} | {c.get('function_description', '')} "
+            f"| {c.get('expected_result', '')} | {c.get('test_result', '待执行')} | {ps} |"
+        )
+    return "\n".join(lines)
+
+
+def _build_category_results_md(title: str, report: dict | None, cases: list) -> str:
+    if not report and not cases:
+        return ""
+    parts = [f"# {title}", ""]
+    stats = (report or {}).get("stats")
+    if stats:
+        parts.append(
+            f"- 总数: {stats.get('total', 0)} · 通过: {stats.get('passed', 0)} · 失败: {stats.get('failed', 0)}"
+        )
+        parts.append("")
+    subset = (report or {}).get("test_cases") or cases
+    if subset:
+        parts.extend(["## 执行明细", "", "| TC-ID | 测试功能 | 测试结果 | 通过 |", "|-------|----------|----------|------|"])
+        for c in subset:
+            ps = "是" if c.get("passed") is True else ("否" if c.get("passed") is False else "待执行")
+            parts.append(
+                f"| {c.get('tc_id', '')} | {c.get('test_function', '')} "
+                f"| {c.get('test_result', '')} | {ps} |"
+            )
+    return "\n".join(parts)
 
 
 def _build_test_results_md(artifacts: Path, cases_data: dict | None, report: dict | None, exec_log: str) -> str:
@@ -188,6 +240,8 @@ def list_execution_reports(page: int = 1, per_page: int = 30) -> tuple[list[dict
         art = _artifacts_path(job)
         count = _bug_count(art) or int(job.get("total_findings") or 0)
         tc_count = _test_case_count(art)
+        func_count = len(_filter_cases_by_category(_load_json(art / "test-cases.json"), "functional"))
+        api_count = len(_filter_cases_by_category(_load_json(art / "test-cases.json"), "api"))
         rows.append({
             "job_id": job["id"],
             "repo_full_name": job.get("repo_full_name", ""),
@@ -197,8 +251,12 @@ def list_execution_reports(page: int = 1, per_page: int = 30) -> tuple[list[dict
             "total_findings": job.get("total_findings", 0),
             "bug_count": count,
             "test_case_count": tc_count,
+            "functional_case_count": func_count,
+            "api_case_count": api_count,
             "has_audit_bugs_md": (art / "audit-bugs.md").is_file(),
             "has_test_cases": (art / "test-cases.md").is_file() or (art / "test-cases.json").is_file(),
+            "has_functional_cases": (art / "test-cases-functional.md").is_file() or func_count > 0,
+            "has_api_cases": (art / "test-cases-api.md").is_file() or api_count > 0,
             "has_test_results": (art / "test-cases-execution.log").is_file() or (art / "test-cases-report.json").is_file(),
             "has_features": (art / "manual-audit-checklist.md").is_file() or tc_count > 0,
             "has_modules": (art / "audit-summary.json").is_file(),
@@ -224,11 +282,43 @@ def get_execution_report(job_id: str) -> dict | None:
     test_cases_md = _read_text(art / "test-cases.md")
     test_cases_json = _load_json(art / "test-cases.json")
     if not test_cases_md.strip() and test_cases_json:
-        test_cases_md = _build_test_cases_md_from_json(test_cases_json)
+        audit_only = _filter_cases_by_category(test_cases_json, "audit")
+        test_cases_md = _build_test_cases_md_from_json(
+            {"test_cases": audit_only, "executed": test_cases_json.get("executed")},
+            title="代码审计验收测试用例",
+        )
+
+    functional_md = _read_text(art / "test-cases-functional.md")
+    functional_json = _load_json(art / "test-cases-functional.json")
+    func_cases = _filter_cases_by_category(test_cases_json, "functional")
+    if not functional_md.strip():
+        if functional_json and functional_json.get("test_cases"):
+            functional_md = _build_category_test_md(
+                functional_json["test_cases"], "功能测试用例（源码扫描）",
+            )
+        elif func_cases:
+            functional_md = _build_category_test_md(func_cases, "功能测试用例（源码扫描）")
+
+    api_md = _read_text(art / "test-cases-api.md")
+    api_json = _load_json(art / "test-cases-api.json")
+    api_cases = _filter_cases_by_category(test_cases_json, "api")
+    if not api_md.strip():
+        if api_json and api_json.get("test_cases"):
+            api_md = _build_category_test_md(api_json["test_cases"], "接口测试用例（源码扫描）")
+        elif api_cases:
+            api_md = _build_category_test_md(api_cases, "接口测试用例（源码扫描）")
 
     exec_log = _read_text(art / "test-cases-execution.log")
     test_report = _load_json(art / "test-cases-report.json", {})
+    func_report = _load_json(art / "test-cases-functional-report.json", {})
+    api_report = _load_json(art / "test-cases-api-report.json", {})
     test_results_md = _build_test_results_md(art, test_cases_json, test_report, exec_log)
+    functional_results_md = _build_category_results_md(
+        "功能测试用例执行结果", func_report, func_cases,
+    )
+    api_results_md = _build_category_results_md(
+        "接口测试用例执行结果", api_report, api_cases,
+    )
     gen_tc_log = _step_log(job_dir, job_id, "generate_test_cases")
     exec_tc_log = _step_log(job_dir, job_id, "execute_test_cases")
 
@@ -249,7 +339,13 @@ def get_execution_report(job_id: str) -> dict | None:
         "generate_bug_report_log": bug_log,
         "test_cases_md": test_cases_md,
         "test_cases_json": test_cases_json,
+        "functional_test_cases_md": functional_md,
+        "functional_test_cases_json": functional_json or {"test_cases": func_cases},
+        "api_test_cases_md": api_md,
+        "api_test_cases_json": api_json or {"test_cases": api_cases},
         "test_results_md": test_results_md,
+        "functional_test_results_md": functional_results_md,
+        "api_test_results_md": api_results_md,
         "test_cases_execution_log": exec_log,
         "generate_test_cases_log": gen_tc_log,
         "execute_test_cases_log": exec_tc_log or exec_log,
@@ -260,7 +356,11 @@ def get_execution_report(job_id: str) -> dict | None:
         "has_audit_bugs_md": bool(audit_bugs_md.strip()),
         "has_report_log": bool(bug_log.strip()),
         "has_test_cases": bool(test_cases_md.strip()),
+        "has_functional_cases": bool(functional_md.strip()),
+        "has_api_cases": bool(api_md.strip()),
         "has_test_results": bool(test_results_md.strip() or exec_log.strip()),
+        "has_functional_results": bool(functional_results_md.strip()),
+        "has_api_results": bool(api_results_md.strip()),
         "has_features": bool(features_md.strip()),
         "has_modules": bool(modules_md.strip()),
     }

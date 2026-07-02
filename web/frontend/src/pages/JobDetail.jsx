@@ -3,9 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import api from '../api'
 import DocumentPanel from '../components/DocumentPanel'
 import IssuesTablePanel from '../components/IssuesTablePanel'
-import JobExecutionReportSidebar from '../components/JobExecutionReportSidebar'
 import PipelineSidebar from '../components/PipelineSidebar'
 import StepLogTerminal from '../components/StepLogTerminal'
+import TelegramSendPanel from '../components/TelegramSendPanel'
 import TerminalStream from '../components/TerminalStream'
 
 export default function JobDetail() {
@@ -64,7 +64,14 @@ export default function JobDetail() {
   const sendAll = async () => {
     setSending(true)
     try {
-      const { data } = await api.post(`/audits/${jobId}/telegram/send`, { send_summary: true })
+      const { data: opts } = await api.get(`/audits/${jobId}/telegram/send-options`)
+      const filenames = (opts.files || [])
+        .filter((f) => f.selected && f.available)
+        .map((f) => f.filename)
+      const { data } = await api.post(`/audits/${jobId}/telegram/send`, {
+        send_summary: opts.send_summary_default !== false,
+        filenames,
+      })
       setTgMsg(`发送成功 ${data.sent}/${data.total}`)
     } catch (err) {
       setTgMsg(err.response?.data?.detail || '发送失败')
@@ -144,19 +151,19 @@ export default function JobDetail() {
           )}
           <Link to={`/reports?job=${jobId}`} className="btn sm secondary">审计执行报告</Link>
         </div>
+        {completed && (
+          <TelegramSendPanel jobId={jobId} completed={completed} onMessage={setTgMsg} />
+        )}
         {tgMsg && <span className="hint"> {tgMsg}</span>}
       </div>
 
-      <div className="job-layout job-layout-sticky job-layout-terminal job-layout-with-bugs">
-        <div className="job-left-column">
-          <div className="job-sidebar-wrap">
-            <PipelineSidebar
-              pipeline={pipeline}
-              selectedStep={selectedStep}
-              onSelectStep={selectStep}
-            />
-          </div>
-          <JobExecutionReportSidebar jobId={jobId} repoName={job.repo_full_name} />
+      <div className="job-layout job-layout-sticky job-layout-terminal">
+        <div className="job-sidebar-wrap">
+          <PipelineSidebar
+            pipeline={pipeline}
+            selectedStep={selectedStep}
+            onSelectStep={selectStep}
+          />
         </div>
 
         <div className="job-main">
