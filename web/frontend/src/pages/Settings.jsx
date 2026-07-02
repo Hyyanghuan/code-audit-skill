@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import api from '../api'
 import SettingsField from '../components/SettingsField'
+import { TabLabel } from '../components/Icons'
 
 function SettingsSection({ group, values, onChange, pathSuggestions = {}, toolSuggestions = {}, reportFiles = [] }) {
   return (
@@ -120,8 +121,12 @@ export default function Settings() {
       <h2>系统配置</h2>
       <p className="hint">所有开关与参数均可在此修改并保存；新建审计任务将使用此处配置。</p>
       <div className="tabs">
-        <button type="button" className={tab === 'audit' ? 'tab active' : 'tab'} onClick={() => setTab('audit')}>审计配置</button>
-        <button type="button" className={tab === 'telegram' ? 'tab active' : 'tab'} onClick={() => setTab('telegram')}>Telegram 配置</button>
+        <button type="button" className={tab === 'audit' ? 'tab active' : 'tab'} onClick={() => setTab('audit')}>
+          <TabLabel icon="audit">审计配置</TabLabel>
+        </button>
+        <button type="button" className={tab === 'telegram' ? 'tab active' : 'tab'} onClick={() => setTab('telegram')}>
+          <TabLabel icon="telegram">Telegram 配置</TabLabel>
+        </button>
       </div>
       {msg && <p className="hint save-msg">{msg}</p>}
       {tab === 'audit' && (

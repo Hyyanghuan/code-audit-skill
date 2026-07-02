@@ -6,6 +6,7 @@ import IssuesTablePanel from '../components/IssuesTablePanel'
 import PipelineSidebar from '../components/PipelineSidebar'
 import StepLogTerminal from '../components/StepLogTerminal'
 import TelegramSendPanel from '../components/TelegramSendPanel'
+import { TabLabel } from '../components/Icons'
 import TerminalStream from '../components/TerminalStream'
 
 export default function JobDetail() {
@@ -170,13 +171,13 @@ export default function JobDetail() {
           <div className="job-main-sticky">
             <div className="view-tabs">
               <button type="button" className={view === 'step' ? 'tab active' : 'tab'} onClick={() => setView('step')}>
-                步骤详情
+                <TabLabel icon="step">步骤详情</TabLabel>
               </button>
               <button type="button" className={view === 'issues' ? 'tab active' : 'tab'} onClick={() => setView('issues')}>
-                问题列表 {displayIssueCount ? `(${displayIssueCount})` : ''}
+                <TabLabel icon="issues">问题列表 {displayIssueCount ? `(${displayIssueCount})` : ''}</TabLabel>
               </button>
               <button type="button" className={view === 'docs' ? 'tab active' : 'tab'} onClick={() => setView('docs')}>
-                审计文档
+                <TabLabel icon="docs">审计文档</TabLabel>
               </button>
             </div>
           </div>

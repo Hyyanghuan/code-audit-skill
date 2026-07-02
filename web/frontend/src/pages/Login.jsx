@@ -28,7 +28,10 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-box card">
-        <h2>Code Audit Console</h2>
+        <div className="login-brand">
+          <img src="/favicon.png" alt="Code Audit" className="login-logo" />
+          <h2>Code Audit Console</h2>
+        </div>
         <p className="hint">使用分配的账户登录（无找回/重置密码入口）</p>
         {error && <div className="error">{error}</div>}
         <form onSubmit={submit}>

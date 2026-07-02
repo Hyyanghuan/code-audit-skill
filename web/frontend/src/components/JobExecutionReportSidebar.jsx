@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../api'
 import ReportContentPanel, { REPORT_TABS, getReportContent } from './ReportContentPanel'
+import { TabLabel } from './Icons'
 
 const SIDEBAR_TABS = REPORT_TABS.slice(0, 4)
 
@@ -48,7 +49,7 @@ export default function JobExecutionReportSidebar({ jobId, repoName }) {
       <div className="view-tabs view-tabs-compact view-tabs-wrap">
         {SIDEBAR_TABS.map((t) => (
           <button key={t.id} type="button" className={tab === t.id ? 'tab active' : 'tab'} onClick={() => setTab(t.id)}>
-            {t.label}
+            <TabLabel icon={t.icon}>{t.label}</TabLabel>
           </button>
         ))}
       </div>

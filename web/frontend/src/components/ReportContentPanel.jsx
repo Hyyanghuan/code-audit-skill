@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import api, { downloadFile } from '../api'
+import { NavIcon, TabLabel } from './Icons'
 import PanelToolbar from './PanelToolbar'
 import { downloadTextFile } from '../utils/exportMarkdown'
 
@@ -7,6 +8,7 @@ export const REPORT_TABS = [
   {
     id: 'bugs',
     label: 'Bug 报告',
+    icon: 'bug',
     field: 'audit_bugs_md',
     fallbackJson: 'audit_bugs_json',
     downloadName: 'audit-bugs-{jobId}.md',
@@ -15,6 +17,7 @@ export const REPORT_TABS = [
   {
     id: 'bug_log',
     label: 'Bug 生成日志',
+    icon: 'log',
     field: 'generate_bug_report_log',
     downloadName: 'generate-bug-report-{jobId}.log',
     mime: 'text/plain;charset=utf-8',
@@ -22,6 +25,7 @@ export const REPORT_TABS = [
   {
     id: 'test_cases',
     label: '验收测试用例',
+    icon: 'test',
     field: 'test_cases_md',
     fallbackJson: 'test_cases_json',
     downloadName: 'test-cases-{jobId}.md',
@@ -30,6 +34,7 @@ export const REPORT_TABS = [
   {
     id: 'functional_cases',
     label: '功能测试用例',
+    icon: 'function',
     field: 'functional_test_cases_md',
     fallbackJson: 'functional_test_cases_json',
     downloadName: 'test-cases-functional-{jobId}.md',
@@ -38,6 +43,7 @@ export const REPORT_TABS = [
   {
     id: 'api_cases',
     label: '接口测试用例',
+    icon: 'api',
     field: 'api_test_cases_md',
     fallbackJson: 'api_test_cases_json',
     downloadName: 'test-cases-api-{jobId}.md',
@@ -46,6 +52,7 @@ export const REPORT_TABS = [
   {
     id: 'test_results',
     label: '验收执行结果',
+    icon: 'result',
     field: 'test_results_md',
     altField: 'test_cases_execution_log',
     downloadName: 'test-results-{jobId}.md',
@@ -55,6 +62,7 @@ export const REPORT_TABS = [
   {
     id: 'functional_results',
     label: '功能执行结果',
+    icon: 'result',
     field: 'functional_test_results_md',
     downloadName: 'functional-results-{jobId}.md',
     artifact: 'test-cases-functional-report.json',
@@ -62,6 +70,7 @@ export const REPORT_TABS = [
   {
     id: 'api_results',
     label: '接口执行结果',
+    icon: 'result',
     field: 'api_test_results_md',
     downloadName: 'api-results-{jobId}.md',
     artifact: 'test-cases-api-report.json',
@@ -69,6 +78,7 @@ export const REPORT_TABS = [
   {
     id: 'features',
     label: '功能清单',
+    icon: 'features',
     field: 'features_md',
     downloadName: 'features-checklist-{jobId}.md',
     artifact: 'manual-audit-checklist.md',
@@ -76,6 +86,7 @@ export const REPORT_TABS = [
   {
     id: 'modules',
     label: '模块实现结果',
+    icon: 'modules',
     field: 'modules_result_md',
     downloadName: 'module-results-{jobId}.md',
   },
@@ -151,7 +162,7 @@ export default function ReportContentPanel({
             className={tab === t.id ? 'tab active' : 'tab'}
             onClick={() => onTabChange(t.id)}
           >
-            {t.label}
+            <TabLabel icon={t.icon}>{t.label}</TabLabel>
           </button>
         ))}
       </div>
