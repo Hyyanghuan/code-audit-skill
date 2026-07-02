@@ -1,0 +1,98 @@
+# 文件路径 → 功能模块映射（用于差异报告的功能影响分析）
+# glob 使用 fnmatch 风格；匹配顺序：先 exact，再 longest prefix/glob
+
+modules:
+  action-core:
+    spec: docs/specs/action-core/spec.md
+    paths:
+      - action.yml
+      - scripts/init.sh
+      - scripts/detect-languages.sh
+      - scripts/finalize-results.sh
+      - scripts/common.sh
+    impact: Composite Action 编排、初始化、汇总、Job 成败判定
+
+  scan-gitleaks:
+    spec: docs/specs/scan-gitleaks/spec.md
+    paths: [scripts/run-gitleaks.sh, config/gitleaks.toml]
+    impact: 敏感密钥扫描结果与 Bug 报告
+
+  scan-bandit:
+    spec: docs/specs/scan-bandit/spec.md
+    paths: [scripts/run-bandit.sh]
+    impact: Python 安全扫描（无 Python 时跳过）
+
+  scan-super-linter:
+    spec: docs/specs/scan-super-linter/spec.md
+    paths: [scripts/run-super-linter.sh]
+    impact: 多语言规范检查
+
+  scan-dependency:
+    spec: docs/specs/scan-dependency/spec.md
+    paths: [scripts/run-dependency-scan.sh]
+    impact: Trivy 依赖 CVE 扫描
+
+  scan-custom-rules:
+    spec: docs/specs/scan-custom-rules/spec.md
+    paths: [scripts/run-custom-rules.sh, config/custom-rules/**]
+    impact: YAML 业务规则匹配
+
+  audit-engine:
+    spec: docs/specs/audit-engine/spec.md
+    paths:
+      - scripts/audit-engine.py
+      - scripts/run-audit-module.sh
+      - config/sast-patterns.yaml
+      - config/audit-methods.yaml
+    impact: SAST/专项/差分/覆盖率/运行时建议/人工清单
+
+  test-cases:
+    spec: docs/specs/test-cases/spec.md
+    paths:
+      - scripts/generate-test-cases.*
+      - scripts/execute-test-cases.*
+    impact: 验收测试用例生成与 Action test-cases-* outputs
+
+  bug-report:
+    spec: docs/specs/bug-report/spec.md
+    paths: [scripts/generate-bug-report.*]
+    impact: audit-bugs.md/json 与 TG Bug 附件
+
+  telegram:
+    spec: docs/specs/telegram/spec.md
+    paths:
+      - scripts/send-telegram.sh
+      - scripts/load-telegram-config.sh
+      - config/telegram.yaml
+    impact: TG 推送（失败不阻断 Job）
+
+  artifacts:
+    spec: docs/specs/artifacts/spec.md
+    paths: [scripts/bundle-audit-logs.sh]
+    impact: Actions 制品上传内容
+
+  ci-self-test:
+    spec: docs/specs/action-core/spec.md
+    paths: [.github/workflows/**, test-fixtures/**]
+    impact: 自测场景与 PR 门禁
+
+  memory-layer:
+    spec: docs/memory/README.md
+    paths:
+      - docs/memory/**
+      - scripts/generate-memory-report.py
+      - scripts/generate-memory-report.sh
+      - scripts/generate_requirements_checklist.py
+    impact: 需求注册表、清单 MD、TG 需求推送（不影响 CI 审计运行时）
+
+  documentation:
+    spec: docs/proposal.md
+    paths:
+      - docs/proposal.md
+      - docs/design.md
+      - docs/tasks.md
+      - docs/specs/**
+      - README.md
+      - DEPLOYMENT.md
+      - examples/**
+    impact: 文档与接入说明（不影响运行时 unless action.yml）

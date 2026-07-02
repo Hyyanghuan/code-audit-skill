@@ -1,0 +1,128 @@
+# 需求理解六棱镜 — 多视角提问清单
+# 开任务时逐镜填写 intake；关任务时逐镜比对 completion
+
+version: 1
+
+# ── 六棱镜（理解多样性）──
+lenses:
+  product:
+    name: 产品镜
+    source: docs/proposal.md
+    questions:
+      - 用户原始诉求的一句话是什么？
+      - 对应 proposal 哪条 In Scope / Out of Scope？
+      - 不做的是什么（防止范围蔓延）？
+      - 成功指标如何度量？
+
+  user:
+    name: 用户镜
+    source: docs/proposal.md#用户故事
+    questions:
+      - 谁是直接受益者（业务仓维护者/安全负责人/Skill 维护者）？
+      - 使用前 vs 使用后的体验差异？
+      - 有哪些用户路径（happy path / 异常 path）？
+
+  functional:
+    name: 功能镜
+    source: docs/specs/
+    questions:
+      - 涉及哪些 enable-* 模块或 Action inputs/outputs？
+      - 与现有 14 模块的关系（新增/修改/无关）？
+      - 输入是什么、输出是什么、触发条件是什么？
+      - 与哪些 spec 章节直接相关？
+
+  technical:
+    name: 技术镜
+    source: docs/design.md
+    questions:
+      - 改动落在哪一层（L0~L5）？
+      - 是否影响 module-map 中的模块边界？
+      - 是否需要改 action.yml / init / finalize 链路？
+      - 配置从哪加载（Skill 仓 vs 业务仓）？
+
+  edge:
+    name: 边界镜
+    source: test-fixtures/
+    questions:
+      - 空项目 / 无 Python / 无依赖时会怎样？
+      - 工具安装失败、TG 失败、shallow checkout 时行为？
+      - fail-on-findings true/false 两种模式下结果？
+      - 有无 fork PR / Secrets 不可用场景？
+
+  integration:
+    name: 集成镜
+    source: examples/consumer-workflow.yml
+    questions:
+      - 业务仓 workflow 需要改吗？
+      - 是否破坏现有接入方（@main 引用者）？
+      - 制品 / TG / 分支保护 是否需要联动验证？
+      - 文档（README/DEPLOYMENT/spec）是否同步？
+
+# ── 完整性五维（功能探索）──
+completeness_dimensions:
+  scope:
+    label: 范围完整
+    checks:
+      - 已对照 proposal In Scope 逐条确认
+      - 已确认未触碰 Out of Scope
+      - tasks.md 中任务 ID 已关联
+
+  contract:
+    label: 契约完整
+    checks:
+      - 相关 spec 已读且实现一致
+      - action inputs/outputs 与 spec 一致（若涉及）
+      - 配置优先级链未破坏（如 TG yaml > workflow）
+
+  behavior:
+    label: 行为完整
+    checks:
+      - 正常路径已实现
+      - 跳过/降级路径已考虑
+      - 错误路径不拖垮主流程（continue-on-error 策略）
+
+  verification:
+    label: 验证完整
+    checks:
+      - 对应 test-fixtures 场景已列明
+      - self-test 或本地命令已执行或说明原因
+      - AC 每条有证据（文件/命令/报告章节）
+
+  documentation:
+    label: 文档完整
+    checks:
+      - README/接入文档需否更新已判断
+      - spec 契约变更已回写
+      - CONTEXT / tasks 状态将同步
+
+# ── 逻辑缜密性八项（关任务比对）──
+logic_checks:
+  - id: L01
+    name: 目标↔实现
+    rule: intake 中的目标与 diff 变更文件能一一解释
+  - id: L02
+    name: 实现↔契约
+    rule: 代码行为与 spec AC 无未说明偏差
+  - id: L03
+    name: 契约↔产品
+    rule: 未实现 Out of Scope；In Scope 无遗漏
+  - id: L04
+    name: 影响↔模块
+    rule: module-map 映射与人工判断一致
+  - id: L05
+    name: 边界↔降级
+    rule: edge 镜中列出的场景在 design/实现中有对应策略
+  - id: L06
+    name: 集成↔接入
+    rule: 业务仓零配置接入未被破坏（除非任务 Explicit 要求）
+  - id: L07
+    name: 前后一致
+    rule: diff §行为变化 与 completion §结果 无矛盾
+  - id: L08
+    name: 遗留诚实
+    rule: 未完成项写入后续行动，非静默遗漏
+
+# 评分（关任务自评）
+scoring:
+  completeness_pass_threshold: 0.8   # 五维勾选率 ≥ 80%
+  logic_pass_threshold: 1.0          # 八项逻辑检查必须全过或标注豁免

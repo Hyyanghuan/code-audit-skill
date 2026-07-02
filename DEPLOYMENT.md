@@ -261,27 +261,21 @@ Bot Token 和 Chat ID 需要配置在 **GitHub Secrets** 中，workflow 通过 `
 1. 打开业务仓库 → **Settings** → **Secrets and variables** → **Actions**
 2. 同样添加 `TG_BOT_TOKEN` 和 `TG_CHAT_ID`
 
-### 6.3 Token 在 workflow 中的传递位置
-
-Token **不写在代码里**，而是在 workflow 的 `with` 中引用 Secret：
+### 6.3 workflow 引用（v1.0.0 企业级）
 
 ```yaml
-- uses: YOUR_USERNAME/code-audit-skill@v1
+- uses: YOUR_ORG/code-audit-skill@v1.0.0
   with:
+    audit-preset: security
+    enable-sarif: 'true'
     enable-telegram: 'true'
-    # ↓↓↓ Token 填写位置：通过 secrets 引用 ↓↓↓
     telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
     telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
-    telegram-bot-username: '@test_skills_yh_bot'   # 仅展示用，可省略
 ```
 
-对应 `action.yml` 中的 input 名称：
+`config/telegram.yaml` 仅保留推送开关；**Token 仅通过 Secrets / 环境变量 / telegram.local.yaml（本地）**。
 
-| workflow 中的 with 参数 | GitHub Secret | 是否必填 |
-|-------------------------|---------------|----------|
-| `telegram-bot-token` | `TG_BOT_TOKEN` | 启用 TG 时必填 |
-| `telegram-chat-id` | `TG_CHAT_ID` | 启用 TG 时必填 |
-| `telegram-bot-username` | 无需 Secret，直接写用户名 | 可选 |
+详见 [SECURITY.md](../SECURITY.md)。
 
 ### 6.4 安全清单
 

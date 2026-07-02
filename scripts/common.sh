@@ -3,6 +3,9 @@
 # 公共工具库：参数容错、日志、路径解析
 set -uo pipefail
 
+# 规避代理或 GitHub 下载时 curl (18) HTTP/2 stream 异常
+export CURL_HTTP_VERSION="${CURL_HTTP_VERSION:-1_1}"
+
 # --- 日志 ---
 log_info()  { echo "[INFO]  $(date -u +'%Y-%m-%dT%H:%M:%SZ') $*"; }
 log_warn()  { echo "[WARN]  $(date -u +'%Y-%m-%dT%H:%M:%SZ') $*" >&2; }

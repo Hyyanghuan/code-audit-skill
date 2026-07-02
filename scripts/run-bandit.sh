@@ -31,12 +31,15 @@ if [[ "$PY_FILES" -eq 0 ]]; then
   exit 0
 fi
 
-# 安装 bandit
-pip install --quiet bandit==1.7.10 2>>"$LOG_FILE" || {
-  MESSAGE="bandit 安装失败，已降级跳过"
-  write_module_result "$MODULE" "error" 0 "$MESSAGE" "$LOG_FILE"
-  exit 0
-}
+# 安装 bandit（镜像已预装则跳过）
+if ! command -v bandit &>/dev/null; then
+  log_info "安装 bandit v1.7.10…"
+  if ! timeout 180 pip install bandit==1.7.10 >>"$LOG_FILE" 2>&1; then
+    MESSAGE="bandit 安装失败或超时，已降级跳过"
+    write_module_result "$MODULE" "error" 0 "$MESSAGE" "$LOG_FILE"
+    exit 0
+  fi
+fi
 
 REPORT_JSON="${ARTIFACTS_DIR}/bandit-report.json"
 

@@ -1,0 +1,41 @@
+# 企业级审计预设 — init.sh 在 audit-preset != full 时整包应用
+# 文档：docs/GUIDANCE.md §5.2
+
+presets:
+  full:
+    description: 全部模块（默认）；各 enable-* 可单独覆盖（preset=full 时）
+    modules: {}
+
+  minimal:
+    description: CI 快速门禁 — 密钥+SCA+核心 SAST，关 linter/运行时/测试用例
+    modules:
+      enable_super_linter: false
+      enable_runtime_audit: false
+      enable_manual_checklist: false
+      enable_test_cases: false
+      enable_coverage_audit: false
+
+  security:
+    description: 安全专项 — 关规范 linter 与测试用例生成，保留全部安全扫描
+    modules:
+      enable_super_linter: false
+      enable_test_cases: false
+      enable_manual_checklist: false
+
+  python:
+    description: Python 项目 — bandit + Python linter + 安全模块
+    modules:
+      enable_super_linter: true
+      super_linter_languages: "Python"
+      enable_bandit: true
+
+  ci-fast:
+    description: 大仓加速 — 仅差分+密钥+依赖+词法 SAST
+    modules:
+      enable_super_linter: false
+      enable_runtime_audit: false
+      enable_manual_checklist: false
+      enable_test_cases: false
+      enable_coverage_audit: false
+      enable_taint_analysis: false
+      enable_control_flow: false

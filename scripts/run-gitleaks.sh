@@ -26,7 +26,8 @@ fi
 GITLEAKS_VERSION="8.21.2"
 if ! command -v gitleaks &>/dev/null; then
   log_info "安装 gitleaks v${GITLEAKS_VERSION}..."
-  curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+  curl -sSL --http1.1 --retry 2 --retry-delay 3 \
+    "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
     | tar -xz -C /tmp 2>>"$LOG_FILE" || {
     STATUS="error"
     MESSAGE="gitleaks 安装失败，已跳过"

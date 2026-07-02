@@ -38,7 +38,7 @@ dangerous_functions:
     severity: high
     category: sql_injection
     message: "SQL 字符串拼接"
-  - pattern: '(?i)f["\'].*\{.*\}.*(SELECT|INSERT|UPDATE|DELETE)'
+  - pattern: "(?i)f[\"'].*\\{.*\\}.*(SELECT|INSERT|UPDATE|DELETE)"
     severity: medium
     category: sql_injection
     message: "f-string SQL 拼接风险"
@@ -46,7 +46,7 @@ dangerous_functions:
     severity: medium
     category: ssrf
     message: "TLS 验证已禁用"
-  - pattern: '(?i)(password|secret|api_key|token)\s*=\s*["\'][^"\']{4,}["\']'
+  - pattern: "(?i)(password|secret|api_key|token)\\s*=\\s*[\"'][^\"']{4,}[\"']"
     severity: high
     category: hardcoded_secret
     message: "硬编码敏感信息"
@@ -99,7 +99,7 @@ control_flow_patterns:
 
 # ── 配置文件风险 ──
 config_patterns:
-  - pattern: '(?i)(password|secret|api_key)\s*[:=]\s*["\']?[^"\'\s]{3,}'
+  - pattern: "(?i)(password|secret|api_key)\\s*[:=]\\s*[\"']?[^\"'\\s]{3,}"
     severity: high
     message: "配置文件明文密码/密钥"
   - pattern: '(?i)debug\s*[:=]\s*(true|1|yes)'

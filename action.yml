@@ -124,6 +124,16 @@ inputs:
     required: false
     default: ''
 
+  # --- 企业级 ---
+  audit-preset:
+    description: '审计预设：full | minimal | security | python | ci-fast（非 full 时整包覆盖模块开关）'
+    required: false
+    default: 'full'
+  enable-sarif:
+    description: '是否生成 SARIF 制品（GitHub Code Scanning 兼容）'
+    required: false
+    default: 'true'
+
 outputs:
   audit-status:
     description: '审计总体状态：success | failure | skipped'
@@ -143,6 +153,9 @@ outputs:
   test-cases-all-passed:
     description: '全部测试用例是否通过'
     value: ${{ steps.execute_tests.outputs.test-cases-all-passed || 'skipped' }}
+  sarif-path:
+    description: 'SARIF 报告路径（enable-sarif=true 时）'
+    value: ${{ steps.finalize.outputs.sarif-path }}
 
 runs:
   using: composite
@@ -178,6 +191,8 @@ runs:
         INPUT_CUSTOM_RULES_PATH: ${{ inputs.custom-rules-path }}
         INPUT_IGNORE_PATHS_FILE: ${{ inputs.ignore-paths-file }}
         INPUT_SUPER_LINTER_LANGUAGES: ${{ inputs.super-linter-languages }}
+        INPUT_AUDIT_PRESET: ${{ inputs.audit-preset }}
+        INPUT_ENABLE_SARIF: ${{ inputs.enable-sarif }}
       run: bash "${{ github.action_path }}/scripts/init.sh"
 
     - name: 检测项目语言与结构

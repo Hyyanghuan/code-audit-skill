@@ -33,7 +33,8 @@ TRIVY_BIN="${RUNNER_TEMP}/trivy"
 
 if [[ ! -x "$TRIVY_BIN" ]]; then
   log_info "安装 trivy v${TRIVY_VERSION}..."
-  curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+  curl -sfL --http1.1 --retry 2 --retry-delay 3 \
+    "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
     | tar -xz -C "${RUNNER_TEMP}" trivy 2>>"$LOG_FILE" || {
     MESSAGE="trivy 安装失败，已降级跳过"
     write_module_result "$MODULE" "error" 0 "$MESSAGE" "$LOG_FILE"

@@ -7,6 +7,18 @@ source "${SCRIPT_DIR}/common.sh"
 
 log_info "========== 代码审计 Skill 初始化 =========="
 
+# 企业级审计预设（audit-preset != full 时整包覆盖模块开关）
+if [[ -n "${INPUT_AUDIT_PRESET:-}" && "${INPUT_AUDIT_PRESET}" != "full" && "${INPUT_AUDIT_PRESET}" != "custom" ]]; then
+  while IFS='=' read -r pk pv; do
+    [[ -z "${pk:-}" ]] && continue
+    case "$pk" in
+      INPUT_*) export "$pk=$pv" ;;
+      AUDIT_PRESET_APPLIED) PRESET_APPLIED="$pv" ;;
+    esac
+  done < <(python3 "${SCRIPT_DIR}/apply-audit-preset.py" 2>/dev/null || true)
+  log_info "audit-preset=${INPUT_AUDIT_PRESET} 已应用 (${PRESET_APPLIED:-unknown})"
+fi
+
 # 标准化所有布尔开关
 ENABLE_GITLEAKS=$(normalize_bool "${INPUT_ENABLE_GITLEAKS:-}" "true")
 ENABLE_SUPER_LINTER=$(normalize_bool "${INPUT_ENABLE_SUPER_LINTER:-}" "true")
@@ -23,8 +35,9 @@ ENABLE_DIFF_AUDIT=$(normalize_bool "${INPUT_ENABLE_DIFF_AUDIT:-}" "true")
 ENABLE_COVERAGE=$(normalize_bool "${INPUT_ENABLE_COVERAGE_AUDIT:-}" "true")
 ENABLE_RUNTIME=$(normalize_bool "${INPUT_ENABLE_RUNTIME_AUDIT:-}" "true")
 ENABLE_MANUAL_CHECKLIST=$(normalize_bool "${INPUT_ENABLE_MANUAL_CHECKLIST:-}" "true")
+ENABLE_SARIF=$(normalize_bool "${INPUT_ENABLE_SARIF:-}" "true")
 
-# 加载硬编码 TG 配置 config/telegram.yaml
+# 加载 Telegram（Secrets > 环境变量 > yaml）
 # shellcheck source=load-telegram-config.sh
 source "${SCRIPT_DIR}/load-telegram-config.sh"
 
@@ -46,14 +59,15 @@ UPLOAD_ARTIFACTS=$(normalize_bool "${INPUT_UPLOAD_ARTIFACTS:-}" "true")
 WORK_DIR="$(resolve_work_dir)"
 ABS_WORK_DIR="${GITHUB_WORKSPACE}/${WORK_DIR}"
 setup_audit_dirs
+SKILL_VERSION="$(cat "${GITHUB_ACTION_PATH:-${SCRIPT_DIR}/..}/VERSION" 2>/dev/null || echo "1.0.0")"
 
 # Telegram 配置校验（在写入 env 之前）
 TELEGRAM_CONFIGURED="true"
 if [[ "$ENABLE_TELEGRAM" == "true" ]]; then
   if [[ -z "${INPUT_TELEGRAM_BOT_TOKEN:-}" || -z "${INPUT_TELEGRAM_CHAT_ID:-}" ]]; then
     TELEGRAM_CONFIGURED="false"
-    log_warn "Telegram 已启用但 token/chat_id 为空，将尝试从 config/telegram.yaml 读取"
-    echo "::warning title=Telegram 配置缺失::请检查 config/telegram.yaml 或 workflow secrets"
+    log_warn "Telegram 已启用但未配置凭证"
+    echo "::warning title=Telegram 未配置::请设置 Secrets TG_BOT_TOKEN / TG_CHAT_ID 或 config/telegram.local.yaml（见 SECURITY.md）"
   else
     log_info "Telegram 配置就绪 (chat_id=${INPUT_TELEGRAM_CHAT_ID})"
   fi
@@ -82,6 +96,8 @@ export ENABLE_DIFF_AUDIT='${ENABLE_DIFF_AUDIT}'
 export ENABLE_COVERAGE='${ENABLE_COVERAGE}'
 export ENABLE_RUNTIME='${ENABLE_RUNTIME}'
 export ENABLE_MANUAL_CHECKLIST='${ENABLE_MANUAL_CHECKLIST}'
+export ENABLE_SARIF='${ENABLE_SARIF}'
+export INPUT_AUDIT_PRESET='${INPUT_AUDIT_PRESET:-full}'
 export ENABLE_TELEGRAM='${ENABLE_TELEGRAM}'
 export FAIL_ON_FINDINGS='${FAIL_ON_FINDINGS}'
 export UPLOAD_ARTIFACTS='${UPLOAD_ARTIFACTS}'
@@ -106,6 +122,8 @@ cat > "$ARTIFACTS_DIR/audit-meta.json" <<EOF
   "run_id": "${GITHUB_RUN_ID:-}",
   "run_url": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}",
   "work_dir": "${WORK_DIR}",
+  "audit_preset": "${INPUT_AUDIT_PRESET:-full}",
+  "skill_version": "${SKILL_VERSION}",
   "init_time": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 }
 EOF
@@ -132,7 +150,8 @@ gha_output "telegram_configured" "$TELEGRAM_CONFIGURED"
 gha_output "fail_on_findings" "$FAIL_ON_FINDINGS"
 gha_output "upload_artifacts" "$UPLOAD_ARTIFACTS"
 gha_output "work_dir" "$WORK_DIR"
+gha_output "enable_sarif" "$ENABLE_SARIF"
 
 log_info "工作目录: ${WORK_DIR}"
 log_info "审计目录: ${AUDIT_DIR}"
-log_info "模块开关: gitleaks=${ENABLE_GITLEAKS} linter=${ENABLE_SUPER_LINTER} bandit=${ENABLE_BANDIT} deps=${ENABLE_DEPENDENCY} custom=${ENABLE_CUSTOM} tests=${ENABLE_TEST_CASES} tg=${ENABLE_TELEGRAM}"
+log_info "模块开关: preset=${INPUT_AUDIT_PRESET:-full} gitleaks=${ENABLE_GITLEAKS} linter=${ENABLE_SUPER_LINTER} bandit=${ENABLE_BANDIT} sarif=${ENABLE_SARIF} tg=${ENABLE_TELEGRAM}"

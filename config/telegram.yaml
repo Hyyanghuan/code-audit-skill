@@ -11,4 +11,5 @@ send_summary_message: true      # 发送文字摘要
 send_test_cases_md: true        # 发送 test-cases.md 文档
 send_bug_report_md: true        # 存在 Bug 时发送 audit-bugs.md
 send_audit_logs: true           # 发送合并后的运行日志
-max_log_size_kb: 5000          # 日志文件最大体积（KB），超出则截断
+send_requirements_checklist: true  # 关任务后发送完整需求清单 MD
+max_log_size_kb: 5000          # 日志体积上限（KB），超出截断

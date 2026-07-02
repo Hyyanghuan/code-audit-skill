@@ -124,7 +124,7 @@ send_document() {
   local size
   size=$(wc -c < "$file" 2>/dev/null || echo 0)
   log_info "发送文档: $(basename "$file") (${size} bytes)"
-  curl -sS -w "\n%{http_code}" \
+  curl -sS --http1.1 -w "\n%{http_code}" \
     --max-time 120 \
     -X POST "https://api.telegram.org/bot${TOKEN}/sendDocument" \
     -F "chat_id=${CHAT_ID}" \
@@ -135,7 +135,7 @@ send_document() {
 
 send_message() {
   local text="$1"
-  curl -sS -w "\n%{http_code}" \
+  curl -sS --http1.1 -w "\n%{http_code}" \
     --max-time 30 \
     -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
     -d "chat_id=${CHAT_ID}" \

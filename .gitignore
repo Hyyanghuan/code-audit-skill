@@ -18,5 +18,10 @@ node_modules/
 # 本地 secret 测试文件（禁止提交）
 .env
 .env.local
+config/telegram.local.yaml
 *secret*
-*token*
+
+# Web 控制台运行时数据
+web/data/
+web/frontend/node_modules/
+web/frontend/dist/

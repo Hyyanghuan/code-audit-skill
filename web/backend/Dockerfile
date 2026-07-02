@@ -1,0 +1,23 @@
+FROM python:3.11-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git bash curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 审计脚本依赖（避免运行时 pip 阻塞）
+RUN pip install --no-cache-dir bandit==1.7.10
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+
+ENV WEB_SKILL_PATH=/skill \
+    WEB_DATA_DIR=/data \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

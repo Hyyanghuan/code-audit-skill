@@ -1,0 +1,52 @@
+# 业务仓库 — 企业级接入示例
+# 复制到 .github/workflows/code-audit.yml
+
+name: Code Audit
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      working-directory:
+        description: '审计目录'
+        required: false
+        default: '.'
+      audit-preset:
+        description: '审计预设'
+        required: false
+        default: 'security'
+        type: choice
+        options: [full, minimal, security, python, ci-fast]
+
+permissions:
+  contents: read
+  pull-requests: read
+  # security-events: write  # 上传 SARIF 到 Code Scanning 时取消注释
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 差分审计必需
+
+      - name: 运行代码审计 Skill（企业级）
+        uses: YOUR_ORG/code-audit-skill@v1.0.0   # 生产锁定版本，勿用 @main
+        with:
+          working-directory: ${{ github.event.inputs.working-directory || '.' }}
+          audit-preset: ${{ github.event.inputs.audit-preset || 'security' }}
+          fail-on-findings: 'true'
+          enable-sarif: 'true'
+          enable-telegram: 'true'
+          telegram-bot-token: ${{ secrets.TG_BOT_TOKEN }}
+          telegram-chat-id: ${{ secrets.TG_CHAT_ID }}
+
+      # 可选：上传 SARIF 到 GitHub Code Scanning
+      # - uses: github/codeql-action/upload-sarif@v3
+      #   if: always()
+      #   with:
+      #     sarif_file: ${{ steps.audit.outputs.sarif-path }}

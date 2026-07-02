@@ -1,0 +1,34 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: code-audit-backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      WEB_SKILL_PATH: /skill
+      WEB_DATA_DIR: /data
+      WEB_JOB_RETENTION_HOURS: "72"
+      WEB_JWT_SECRET: change-me-in-production
+      # Docker 内无法访问 GitHub 时取消注释并改为本机代理地址（Clash/V2Ray 等）
+      # WEB_HTTPS_PROXY: http://host.docker.internal:7890
+      # WEB_HTTP_PROXY: http://host.docker.internal:7890
+    volumes:
+      - ..:/skill:ro
+      - audit-data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: code-audit-frontend
+    ports:
+      - "8088:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  audit-data:

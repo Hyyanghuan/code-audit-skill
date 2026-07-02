@@ -1,0 +1,6 @@
+# Code Audit Skill CODEOWNERS
+*       @YOUR_ORG/security-team
+/config/ @YOUR_ORG/security-team
+/scripts/ @YOUR_ORG/security-team
+/docs/   @YOUR_ORG/platform-team
+.github/ @YOUR_ORG/platform-team

@@ -106,5 +106,15 @@ gha_output "audit-status" "$AUDIT_STATUS"
 gha_output "findings-count" "$TOTAL_FINDINGS"
 gha_output "results-json" "${ARTIFACTS_DIR}/audit-summary.json"
 
+# SARIF（企业级 Code Scanning 集成）
+SARIF_PATH=""
+if [[ "$(normalize_bool "${ENABLE_SARIF:-true}" "true")" == "true" ]]; then
+  SARIF_PATH=$(python3 "${SCRIPT_DIR}/generate-sarif.py" 2>/dev/null | head -1 || true)
+  if [[ -f "${SARIF_PATH:-}" ]]; then
+    gha_output "sarif-path" "$SARIF_PATH"
+    log_info "SARIF 已生成: ${SARIF_PATH}"
+  fi
+fi
+
 log_info "审计完成: status=${AUDIT_STATUS} findings=${TOTAL_FINDINGS}"
 log_info "通过: ${PASSED_MODULES[*]:-无} | 失败: ${FAILED_MODULES[*]:-无} | 跳过: ${SKIPPED_MODULES[*]:-无}"
